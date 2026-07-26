@@ -10,6 +10,26 @@ export const RateLimitTiers = {
     limit: 5,
     keyPrefix: 'auth',
   },
+  auth_otp: {
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 5,
+    keyPrefix: 'auth_otp',
+  },
+  auth_verify: {
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 10,
+    keyPrefix: 'auth_verify',
+  },
+  auth_challenge: {
+    windowMs: 60 * 1000, // 1 minute
+    limit: 20,
+    keyPrefix: 'auth_challenge',
+  },
+  auth_wallet_verify: {
+    windowMs: 60 * 1000, // 1 minute
+    limit: 20,
+    keyPrefix: 'auth_wallet_verify',
+  },
   kyc_submit: {
     windowMs: 60 * 60 * 1000, // 1 hour
     limit: 3,

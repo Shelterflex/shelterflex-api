@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import express, { Request, Response } from 'express'
+import express, { Request, Response, NextFunction } from 'express'
 import supertest from 'supertest'
 import {
   createComprehensiveRateLimiter,
@@ -9,6 +9,7 @@ import {
   type EndpointRateLimitConfig,
 } from './comprehensiveRateLimit.js'
 import { quotaService } from '../services/QuotaService.js'
+import { RateLimitTiers } from '../config/rateLimits.js'
 
 vi.mock('../services/QuotaService.js', () => ({
   quotaService: {
@@ -18,7 +19,7 @@ vi.mock('../services/QuotaService.js', () => ({
 
 describe('Comprehensive Rate Limiting', () => {
   let app: express.Application
-  let agent: supertest.SuperTest<supertest.Test>
+  let agent: any
 
   beforeEach(() => {
     resetRateLimitStore()
@@ -38,8 +39,8 @@ describe('Comprehensive Rate Limiting', () => {
     // Add comprehensive rate limiter
     app.use(
       createComprehensiveRateLimiter({
-        defaultWindowMs: 1000, // 1 second for testing
-        defaultLimit: 5,
+        defaultWindowMs: 60 * 1000, // 60 seconds (public tier window)
+        defaultLimit: 120, // public tier limit
       })
     )
 
@@ -71,7 +72,7 @@ describe('Comprehensive Rate Limiting', () => {
   it('should allow requests within limit', async () => {
     const results = []
 
-    // Make 5 requests (the limit)
+    // Make 5 requests (well within the 120 limit)
     for (let i = 0; i < 5; i++) {
       const res = await agent.get('/api/test')
       results.push(res.status)
@@ -82,12 +83,12 @@ describe('Comprehensive Rate Limiting', () => {
   })
 
   it('should block requests exceeding limit', async () => {
-    // Make 6 requests (one more than limit of 5)
-    for (let i = 0; i < 5; i++) {
+    // Make 121 requests (one more than limit of 120)
+    for (let i = 0; i < 120; i++) {
       await agent.get('/api/test')
     }
 
-    // The 6th request should be blocked
+    // The 121st request should be blocked
     const res = await agent.get('/api/test')
     expect(res.status).toBe(429)
     expect(res.body.error.code).toBe('TOO_MANY_REQUESTS')
@@ -100,13 +101,13 @@ describe('Comprehensive Rate Limiting', () => {
     expect(res.headers['x-ratelimit-remaining']).toBeDefined()
     expect(res.headers['x-ratelimit-reset']).toBeDefined()
 
-    expect(parseInt(res.headers['x-ratelimit-limit'])).toBe(5)
-    expect(parseInt(res.headers['x-ratelimit-remaining'])).toBeLessThanOrEqual(5)
+    expect(parseInt(res.headers['x-ratelimit-limit'])).toBe(120)
+    expect(parseInt(res.headers['x-ratelimit-remaining'])).toBeLessThanOrEqual(120)
   })
 
   it('should set Retry-After header when rate limited', async () => {
     // Exceed the limit
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 120; i++) {
       await agent.get('/api/test')
     }
 
@@ -225,8 +226,8 @@ describe('Comprehensive Rate Limiting', () => {
 
     const customAgent = supertest(customApp)
     const res = await customAgent.get('/api/test')
-    // totalLimit = config.limit * 2 = 10 * 2 = 20
-    expect(parseInt(res.headers['x-ratelimit-limit'])).toBe(20)
+    // totalLimit = config.limit * 2 = 120 * 2 = 240
+    expect(parseInt(res.headers['x-ratelimit-limit'])).toBe(240)
   })
 
   it('should provide rate limit statistics', () => {
@@ -252,7 +253,7 @@ describe('Endpoint-Specific Rate Limits', () => {
   it('should enforce strict limits for auth endpoints', async () => {
     const app = express()
 
-    app.use((req: Request, _res: Response, next) => {
+    app.use((req: Request, _res: Response, next: NextFunction) => {
       ;(req as any).id = 'test-' + Math.random().toString()
       next()
     })
@@ -296,7 +297,7 @@ describe('Endpoint-Specific Rate Limits', () => {
 
 describe('Rate Blocking Scenarios', () => {
   let app: express.Application
-  let agent: supertest.SuperTest<supertest.Test>
+  let agent: any
 
   beforeEach(() => {
     resetRateLimitStore()
@@ -310,8 +311,8 @@ describe('Rate Blocking Scenarios', () => {
 
     app.use(
       createComprehensiveRateLimiter({
-        defaultWindowMs: 1000,
-        defaultLimit: 10,
+        defaultWindowMs: 60 * 1000,
+        defaultLimit: 120,
       })
     )
 
@@ -335,6 +336,12 @@ describe('Rate Blocking Scenarios', () => {
   })
 
   it('should reset limit after time window', async () => {
+    // Use custom endpoint limit for faster test
+    setEndpointRateLimit('GET', '/api/endpoint', {
+      windowMs: 1000, // 1 second for test
+      limit: 10,
+    })
+
     // Make requests up to limit in first window
     for (let i = 0; i < 10; i++) {
       const res = await agent.get('/api/endpoint')
@@ -354,8 +361,8 @@ describe('Rate Blocking Scenarios', () => {
   })
 
   it('should handle concurrent requests correctly', async () => {
-    const limit = 5
-    const concurrentRequests = 10
+    const limit = 120
+    const concurrentRequests = 130
 
     // Make concurrent requests (some should be blocked)
     const promises = Array(concurrentRequests)
@@ -413,5 +420,182 @@ describe('Rate Limit Configuration', () => {
     setEndpointRateLimit('GET', '/api/skip-fail', config)
 
     expect(config.skipFailedRequests).toBe(true)
+  })
+})
+
+describe('Rate Limit Config Integration', () => {
+  beforeEach(() => {
+    resetRateLimitStore()
+    vi.clearAllMocks()
+    vi.mocked(quotaService.getUserLimits).mockResolvedValue({
+      requestsPerMinute: 100,
+      requestsPerDay: 1000,
+    })
+  })
+
+  it('should use public tier config values from rateLimits.ts', async () => {
+    const app = express()
+
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      ;(req as any).id = 'test-' + Math.random().toString()
+      next()
+    })
+
+    app.use(createComprehensiveRateLimiter())
+
+    app.get('/api/feature-flags', (_req: Request, res: Response) => {
+      res.json({ ok: true })
+    })
+
+    app.use((err: any, _req: Request, res: Response) => {
+      if (err.status === 429) {
+        return res.status(429).json({ error: err.message })
+      }
+      res.status(500).json({ error: 'Error' })
+    })
+
+    const agent = supertest(app)
+
+    // Public tier should have 120 requests per 60 seconds
+    const res = await agent.get('/api/feature-flags')
+    expect(parseInt(res.headers['x-ratelimit-limit'])).toBe(RateLimitTiers.public.limit)
+  })
+
+  it('should enforce public tier limit after budget exceeded', async () => {
+    const app = express()
+
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      ;(req as any).id = 'test-' + Math.random().toString()
+      next()
+    })
+
+    app.use(createComprehensiveRateLimiter())
+
+    app.get('/api/feature-flags', (_req: Request, res: Response) => {
+      res.json({ ok: true })
+    })
+
+    app.use((err: any, _req: Request, res: Response) => {
+      if (err.status === 429) {
+        return res.status(429).json({ error: err.message })
+      }
+      res.status(500).json({ error: 'Error' })
+    })
+
+    const agent = supertest(app)
+
+    // Make requests up to the public tier limit (120)
+    const results = []
+    for (let i = 0; i < 120; i++) {
+      const res = await agent.get('/api/feature-flags')
+      results.push(res.status)
+    }
+
+    // All 120 should succeed
+    expect(results.every((status) => status === 200)).toBe(true)
+
+    // The 121st request should be blocked
+    const res = await agent.get('/api/feature-flags')
+    expect(res.status).toBe(429)
+  })
+
+  it('should use auth_otp tier config values from rateLimits.ts', async () => {
+    const app = express()
+
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      ;(req as any).id = 'test-' + Math.random().toString()
+      next()
+    })
+
+    app.use(createComprehensiveRateLimiter())
+
+    app.post('/api/auth/request-otp', (_req: Request, res: Response) => {
+      res.json({ ok: true })
+    })
+
+    app.use((err: any, _req: Request, res: Response) => {
+      if (err.status === 429) {
+        return res.status(429).json({ error: err.message })
+      }
+      res.status(500).json({ error: 'Error' })
+    })
+
+    const agent = supertest(app)
+
+    const res = await agent.post('/api/auth/request-otp')
+    expect(parseInt(res.headers['x-ratelimit-limit'])).toBe(RateLimitTiers.auth_otp.limit)
+  })
+
+  it('should use auth_verify tier config values from rateLimits.ts', async () => {
+    const app = express()
+
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      ;(req as any).id = 'test-' + Math.random().toString()
+      next()
+    })
+
+    app.use(createComprehensiveRateLimiter())
+
+    app.post('/api/auth/verify-otp', (_req: Request, res: Response) => {
+      res.json({ ok: true })
+    })
+
+    app.use((err: any, _req: Request, res: Response) => {
+      if (err.status === 429) {
+        return res.status(429).json({ error: err.message })
+      }
+      res.status(500).json({ error: 'Error' })
+    })
+
+    const agent = supertest(app)
+
+    const res = await agent.post('/api/auth/verify-otp')
+    expect(parseInt(res.headers['x-ratelimit-limit'])).toBe(RateLimitTiers.auth_verify.limit)
+  })
+
+  it('should recover after configured window elapses using fake timers', async () => {
+    const app = express()
+
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      ;(req as any).id = 'test-' + Math.random().toString()
+      next()
+    })
+
+    // Use custom endpoint limit for faster test
+    setEndpointRateLimit('GET', '/api/test', {
+      windowMs: 1000, // 1 second for test
+      limit: 5,
+    })
+
+    app.use(createComprehensiveRateLimiter())
+
+    app.get('/api/test', (_req: Request, res: Response) => {
+      res.json({ ok: true })
+    })
+
+    app.use((err: any, _req: Request, res: Response) => {
+      if (err.status === 429) {
+        return res.status(429).json({ error: err.message })
+      }
+      res.status(500).json({ error: 'Error' })
+    })
+
+    const agent = supertest(app)
+
+    // Make requests up to limit
+    for (let i = 0; i < 5; i++) {
+      await agent.get('/api/test')
+    }
+
+    // Next request should be blocked
+    let res = await agent.get('/api/test')
+    expect(res.status).toBe(429)
+
+    // Wait for window to reset (1 second + buffer)
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+
+    // New request should succeed after window reset
+    res = await agent.get('/api/test')
+    expect(res.status).toBe(200)
   })
 })

@@ -44,25 +44,25 @@ function getEndpointConfig(method: string, path: string): RateLimitConfig & { ma
   }
 
   if (path.startsWith('/api/auth/request-otp') || path.startsWith('/auth/request-otp')) {
-    return { windowMs: 15 * 60 * 1000, limit: 5, keyPrefix: 'auth_otp', matchedKey: 'auth_otp' }
+    return { ...RateLimitTiers.auth_otp, matchedKey: 'auth_otp' }
   }
   if (path.startsWith('/api/auth/verify-otp') || path.startsWith('/auth/verify-otp')) {
-    return { windowMs: 15 * 60 * 1000, limit: 10, keyPrefix: 'auth_verify', matchedKey: 'auth_verify' }
+    return { ...RateLimitTiers.auth_verify, matchedKey: 'auth_verify' }
   }
   if (
     path.startsWith('/api/auth/wallet-challenge') || path.startsWith('/auth/wallet-challenge') ||
     path.startsWith('/api/auth/wallet/challenge') || path.startsWith('/auth/wallet/challenge')
   ) {
-    return { windowMs: 60 * 1000, limit: 20, keyPrefix: 'auth_challenge', matchedKey: 'auth_challenge' }
+    return { ...RateLimitTiers.auth_challenge, matchedKey: 'auth_challenge' }
   }
   if (
     path.startsWith('/api/auth/wallet-verify') || path.startsWith('/auth/wallet-verify') ||
     path.startsWith('/api/auth/wallet/verify') || path.startsWith('/auth/wallet/verify')
   ) {
-    return { windowMs: 60 * 1000, limit: 20, keyPrefix: 'auth_wallet_verify', matchedKey: 'auth_wallet_verify' }
+    return { ...RateLimitTiers.auth_wallet_verify, matchedKey: 'auth_wallet_verify' }
   }
   if (path.startsWith('/api/auth') || path.startsWith('/auth')) {
-    return { windowMs: 60 * 1000, limit: 20, keyPrefix: 'auth', matchedKey: 'auth' }
+    return { ...RateLimitTiers.auth, matchedKey: 'auth' }
   }
 
   if (method === 'POST' && (path === '/api/kyc' || path === '/api/kyc/' || path === '/kyc' || path === '/kyc/')) {
@@ -149,11 +149,6 @@ export function createComprehensiveRateLimiter(options: {
 
       let windowMs = config.windowMs
       let limit = config.limit
-
-      if (config.keyPrefix === 'public') {
-        windowMs = options.defaultWindowMs ?? 15 * 60 * 1000
-        limit = options.defaultLimit ?? userTierLimits.requestsPerMinute ?? 100
-      }
 
       if (userId) {
         limit = limit * 2
