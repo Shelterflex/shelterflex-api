@@ -24,6 +24,7 @@ async function loadEnvSchema() {
   // Ensure module-level parse(process.env) succeeds during import.
   process.env.NODE_ENV = 'development'
   process.env.ENCRYPTION_KEY = 'a'.repeat(32)
+  process.env.WEBHOOK_KEY = 'test-webhook-key'
   vi.resetModules()
   const mod = await import('./env.js')
   return mod.envSchema
@@ -35,12 +36,16 @@ describe('envSchema — USDC token id requirements', () => {
 
   it('dev allows missing token id', async () => {
     const envSchema = await loadEnvSchema()
-    expect(() => envSchema.parse({ NODE_ENV: 'development', ENCRYPTION_KEY: 'a'.repeat(32) })).not.toThrow()
+    expect(() =>
+      envSchema.parse({ NODE_ENV: 'development', ENCRYPTION_KEY: 'a'.repeat(32), WEBHOOK_KEY: 'test-webhook-key' }),
+    ).not.toThrow()
   })
 
   it('test allows missing token id', async () => {
     const envSchema = await loadEnvSchema()
-    expect(() => envSchema.parse({ NODE_ENV: 'test', ENCRYPTION_KEY: 'a'.repeat(32) })).not.toThrow()
+    expect(() =>
+      envSchema.parse({ NODE_ENV: 'test', ENCRYPTION_KEY: 'a'.repeat(32), WEBHOOK_KEY: 'test-webhook-key' }),
+    ).not.toThrow()
   })
 
   it('production rejects missing token id', async () => {
@@ -50,6 +55,7 @@ describe('envSchema — USDC token id requirements', () => {
     const baseProd = {
       NODE_ENV: 'production',
       ENCRYPTION_KEY: 'a'.repeat(32),
+      WEBHOOK_KEY: 'test-webhook-key',
       CUSTODIAL_WALLET_MASTER_KEY_V1: 'b'.repeat(32),
       WEBHOOK_SECRET: 'secret',
       PAYSTACK_SECRET: 'paystack',
@@ -78,6 +84,7 @@ describe('envSchema — USDC token id requirements', () => {
       const res = envSchema.safeParse({
         NODE_ENV: 'development',
         ENCRYPTION_KEY: 'a'.repeat(32),
+        WEBHOOK_KEY: 'test-webhook-key',
         SOROBAN_USDC_TOKEN_ID: token,
       })
       expect(res.success).toBe(false)
@@ -90,6 +97,7 @@ describe('envSchema — USDC token id requirements', () => {
     const result = envSchema.safeParse({
       NODE_ENV: 'production',
       ENCRYPTION_KEY: 'a'.repeat(32),
+      WEBHOOK_KEY: 'test-webhook-key',
       CUSTODIAL_WALLET_MASTER_KEY_V1: 'b'.repeat(32),
       WEBHOOK_SECRET: 'secret',
       PAYSTACK_SECRET: 'paystack',
@@ -107,6 +115,7 @@ describe('envSchema — USDC token id requirements', () => {
     const result = envSchema.safeParse({
       NODE_ENV: 'production',
       ENCRYPTION_KEY: 'a'.repeat(32),
+      WEBHOOK_KEY: 'test-webhook-key',
       CUSTODIAL_WALLET_MASTER_KEY_V1: 'b'.repeat(32),
       WEBHOOK_SECRET: 'secret',
       PAYSTACK_SECRET: 'paystack',
@@ -116,5 +125,47 @@ describe('envSchema — USDC token id requirements', () => {
     })
 
     expect(result.success).toBe(true)
+  })
+})
+
+describe('envSchema — WEBHOOK_KEY requirement', () => {
+  it('rejects a config with no WEBHOOK_KEY', async () => {
+    const envSchema = await loadEnvSchema()
+
+    const result = envSchema.safeParse({ NODE_ENV: 'development', ENCRYPTION_KEY: 'a'.repeat(32) })
+
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.includes('WEBHOOK_KEY'))).toBe(true)
+    }
+  })
+
+  it('accepts any non-empty WEBHOOK_KEY', async () => {
+    const envSchema = await loadEnvSchema()
+
+    const result = envSchema.safeParse({
+      NODE_ENV: 'development',
+      ENCRYPTION_KEY: 'a'.repeat(32),
+      WEBHOOK_KEY: 'a',
+    })
+
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('formatEnvValidationError', () => {
+  it('reports every invalid/missing variable in one message, each with its constraint', async () => {
+    const { envSchema, formatEnvValidationError } = await import('./env.js')
+
+    const result = envSchema.safeParse({ NODE_ENV: 'development', ENCRYPTION_KEY: 'too-short' })
+    expect(result.success).toBe(false)
+    if (result.success) return
+
+    const message = formatEnvValidationError(result.error)
+
+    expect(message).toContain('ENCRYPTION_KEY')
+    expect(message).toContain('Encryption key must be at least 32 characters')
+    expect(message).toContain('WEBHOOK_KEY')
+    expect(message).toContain('WEBHOOK_KEY is required to sign and verify inbound webhook requests')
   })
 })

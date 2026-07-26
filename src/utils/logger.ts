@@ -55,3 +55,24 @@ export const logger = {
           write('error', message, { ...fields, ...errorFields });
      },
 };
+
+const lastLoggedAt = new Map<string, number>();
+
+/**
+ * Logs at most once per `windowMs` for a given `key`. Meant for errors that
+ * can fire on every request during a sustained outage (e.g. a downstream
+ * dependency being unreachable) where per-request logging would flood output.
+ */
+export function logThrottled(
+     level: 'warn' | 'error',
+     key: string,
+     windowMs: number,
+     message: string,
+     fields?: LogFields,
+): void {
+     const now = Date.now();
+     const last = lastLoggedAt.get(key) ?? 0;
+     if (now - last < windowMs) return;
+     lastLoggedAt.set(key, now);
+     write(level, message, fields);
+}

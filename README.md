@@ -7,11 +7,28 @@ Node.js backend for Shelterflex.
 > **Package manager:** This project uses **npm**. Use `npm install` (not `pnpm` or `yarn`) to match
 > the `package-lock.json` lockfile that is committed to the repository.
 
+**Prerequisites:**
+
+- A local Postgres instance with a database matching `DATABASE_URL` in `.env.example`
+  (default: `postgres://app:app@localhost:5432/app` — create a role and database named
+  `app` locally, or point `DATABASE_URL` at your own instance). Required — the server
+  runs pending migrations against it on startup.
+- Redis is optional for local development: it's used for rate limiting/quotas and fails
+  open if unreachable, or set `REDIS_DISABLED=true` to skip it entirely.
+
+Postgres + MinIO are easiest to run via the full-stack compose in
+[shelterflex-platform](https://github.com/Shelterflex/shelterflex-platform).
+
 ```bash
 npm install
 cp .env.example .env
 npm run dev
 ```
+
+`.env.example` ships with schema-valid placeholder secrets so the server boots
+out of the box — replace `ENCRYPTION_KEY` and `WEBHOOK_KEY` with real generated
+values before using this outside local development (see the comments in
+`.env.example` for how to generate each one).
 
 ## Testing
 

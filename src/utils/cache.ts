@@ -142,11 +142,21 @@ export class MultiLayerCache<T extends {}> {
     }
 
     async invalidate(key: string): Promise<void> {
-        await Promise.all([this.l1.delete(key), this.l2.delete(key)])
+        await Promise.all([
+            this.l1.delete(key),
+            this.l2.delete(key).catch(err => {
+                logger.warn('L2 cache invalidate error (L1 still cleared)', { key, error: err instanceof Error ? err.message : String(err) })
+            }),
+        ])
     }
 
     async clear(): Promise<void> {
-        await Promise.all([this.l1.clear(), this.l2.clear()])
+        await Promise.all([
+            this.l1.clear(),
+            this.l2.clear().catch(err => {
+                logger.warn('L2 cache clear error (L1 still cleared)', { error: err instanceof Error ? err.message : String(err) })
+            }),
+        ])
     }
 
     getMetrics(): CacheMetrics & { hitRate: number } {

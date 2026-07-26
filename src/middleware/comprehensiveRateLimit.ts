@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
-import { logger } from '../utils/logger.js'
+import { logThrottled } from '../utils/logger.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import type { User } from '../repositories/AuthRepository.js'
@@ -180,7 +180,11 @@ export function createComprehensiveRateLimiter(options: {
       if (error instanceof AppError) {
         return next(error)
       }
-      logger.error('Comprehensive rate limiting error:', { error })
+      // Fail open (e.g. Redis unreachable) — logged at a bounded rate since
+      // this can be hit on every request during a sustained outage.
+      logThrottled('error', 'comprehensive-rate-limit-fail-open', 10_000, 'Comprehensive rate limiting error, failing open', {
+        error: error instanceof Error ? error.message : String(error),
+      })
       next()
     }
   }

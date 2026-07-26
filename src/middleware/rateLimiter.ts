@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express'
 import { RateLimiterRedis, RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible'
 import { getRedisClient } from '../utils/redis.js'
-import { logger } from '../utils/logger.js'
+import { logger, logThrottled } from '../utils/logger.js'
 import type { RateLimiterOptions } from '../config/rateLimitConfig.js'
 
 function buildKey(req: Request, keyBy: 'ip' | 'user'): string {
@@ -76,8 +76,12 @@ export function createRateLimiter(options: RateLimiterOptions) {
         return
       }
 
-      // Redis or unexpected error — fail open
-      logger.warn('[rateLimiter] Redis error, failing open', { error: String(err), key })
+      // Redis or unexpected error — fail open. This is deliberate: rate
+      // limiting is not security-relevant (unlike e.g. nonce/replay checks),
+      // so an unreachable Redis should degrade to "unlimited" rather than
+      // block traffic. Logged at a bounded rate since this path can be hit
+      // on every request during a sustained outage.
+      logThrottled('warn', 'rate-limiter-redis-fail-open', 10_000, '[rateLimiter] Redis error, failing open', { error: String(err), key })
       next()
     }
   }

@@ -18,7 +18,12 @@ export const envSchema = z.object({
   USDC_TOKEN_ADDRESS: z.string().optional(),
   SOROBAN_USDC_TOKEN_ID: z.string().optional(),
   SOROBAN_INSPECTOR_BOND_ID: z.string().optional(),
-  ENCRYPTION_KEY: z.string().min(32, 'Encryption key must be at least 32 characters'),
+  ENCRYPTION_KEY: z
+    .string({ required_error: 'Encryption key must be at least 32 characters' })
+    .min(32, 'Encryption key must be at least 32 characters'),
+  WEBHOOK_KEY: z
+    .string({ required_error: 'WEBHOOK_KEY is required to sign and verify inbound webhook requests' })
+    .min(1, 'WEBHOOK_KEY is required to sign and verify inbound webhook requests'),
   CUSTODIAL_WALLET_MASTER_KEY_V1: z.string().optional(),
   CUSTODIAL_WALLET_MASTER_KEY_V2: z.string().optional(),
   CUSTODIAL_WALLET_MASTER_KEY_ACTIVE_VERSION: z.coerce.number().default(1),
@@ -172,4 +177,25 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>
 
-export const env = envSchema.parse(process.env)
+/**
+ * Renders every issue from a failed envSchema parse as one line each, so a
+ * misconfigured .env reports all missing/invalid variables in a single pass
+ * instead of a slow fix-one-restart-repeat loop.
+ */
+export function formatEnvValidationError(error: z.ZodError): string {
+  const lines = error.issues.map((issue) => {
+    const variable = issue.path.join('.') || '(root)'
+    return `  - ${variable}: ${issue.message}`
+  })
+  return `Invalid environment configuration:\n${lines.join('\n')}`
+}
+
+function loadEnv(): Env {
+  const result = envSchema.safeParse(process.env)
+  if (!result.success) {
+    throw new Error(formatEnvValidationError(result.error))
+  }
+  return result.data
+}
+
+export const env = loadEnv()

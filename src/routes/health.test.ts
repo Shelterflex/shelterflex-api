@@ -13,6 +13,7 @@ describe('Health Router', () => {
         nodeEnv: 'test',
         uptimeSeconds: 42,
         dbConnected: true,
+        redisStatus: 'disabled',
         requestId: 'req-123',
       })
       const secondPayload = buildHealthDetailsPayload({
@@ -20,6 +21,7 @@ describe('Health Router', () => {
         nodeEnv: 'test',
         uptimeSeconds: 42,
         dbConnected: true,
+        redisStatus: 'disabled',
         requestId: 'req-123',
       })
 
@@ -28,6 +30,7 @@ describe('Health Router', () => {
         'nodeEnv',
         'uptimeSeconds',
         'dbConnected',
+        'redisStatus',
         'requestId',
       ])
       expect(JSON.stringify(firstPayload)).toBe(JSON.stringify(secondPayload))

@@ -5,6 +5,7 @@ import { quotaService } from '../services/QuotaService.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import type { User } from '../repositories/AuthRepository.js'
+import { logThrottled } from '../utils/logger.js'
 
 /**
  * Advanced rate limiter middleware with sliding window and user quotas.
@@ -52,7 +53,11 @@ export function createAdvancedRateLimiter(options: {
       if (error instanceof AppError) {
         return next(error)
       }
-      console.error('[rateLimit] unexpected error:', error)
+      // Fail open (e.g. Redis unreachable) — logged at a bounded rate since
+      // this can be hit on every request during a sustained outage.
+      logThrottled('error', 'advanced-rate-limit-fail-open', 10_000, '[rateLimit] unexpected error, failing open', {
+        error: error instanceof Error ? error.message : String(error),
+      })
       next() // allow request on internal error to avoid blocking users
     }
   }

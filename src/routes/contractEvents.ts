@@ -5,6 +5,8 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { getPool } from '../db.js'
+import { authenticateToken } from '../middleware/auth.js'
+import { requirePermission } from '../middleware/rbac.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { logger } from '../utils/logger.js'
@@ -15,7 +17,7 @@ const router = Router()
  * GET /api/admin/contract-events
  * Paginated event list with filters: contract, event type, date range
  */
-router.get('/admin/contract-events', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/admin/contract-events', authenticateToken, requirePermission('contract-events', 'view'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { contract, eventType, startDate, endDate, page = '1', pageSize = '20' } = req.query
 
@@ -104,7 +106,7 @@ router.get('/admin/contract-events', async (req: Request, res: Response, next: N
  * GET /api/deals/:dealId/on-chain-events
  * Events related to a specific deal (filter by topic_1 = dealId)
  */
-router.get('/deals/:dealId/on-chain-events', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/deals/:dealId/on-chain-events', authenticateToken, requirePermission('contract-events', 'view'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { dealId } = req.params
 

@@ -17,10 +17,8 @@ const require = createRequire(import.meta.url)
 const { version } = require("../package.json") as { version: string }
 
 // Validate environment before starting the server
-if (!process.env.WEBHOOK_KEY) {
-  throw new Error("Missing WEBHOOK_KEY");
-}
-
+// (WEBHOOK_KEY and other required variables are validated by envSchema,
+// imported above — see src/schemas/env.ts)
 if (env.NODE_ENV === "production" && !process.env.SECURE_CONFIG) {
   process.exit(1);
 }

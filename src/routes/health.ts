@@ -4,12 +4,14 @@ import { getPool, getPoolMetrics } from "../db.js"
 import { getMetricsSnapshot } from "../utils/appMetrics.js"
 import { SorobanAdapter } from "../soroban/adapter.js"
 import { CircuitBreakerAdapter } from "../soroban/circuit-breaker-adapter.js"
+import { getRedisStatus } from "../utils/redis.js"
 
 interface HealthDetailsPayloadInput {
   version: string
   nodeEnv: string
   uptimeSeconds: number
   dbConnected: boolean
+  redisStatus: string
   requestId: string
 }
 
@@ -18,6 +20,7 @@ export function buildHealthDetailsPayload({
   nodeEnv,
   uptimeSeconds,
   dbConnected,
+  redisStatus,
   requestId,
 }: HealthDetailsPayloadInput) {
   return {
@@ -25,6 +28,7 @@ export function buildHealthDetailsPayload({
     nodeEnv,
     uptimeSeconds,
     dbConnected,
+    redisStatus,
     requestId,
   }
 }
@@ -54,6 +58,9 @@ export function createHealthRouter(adapter: SorobanAdapter): Router {
       version: env.VERSION,
       apiVersion: "v1",
       dbLatencyMs,
+      // Synchronous status check (see getRedisStatus) — never awaits Redis,
+      // so an outage degrades this field instead of hanging the endpoint.
+      redisStatus: getRedisStatus(),
       memoryUsageMb: Math.round(memory.heapUsed / 1024 / 1024),
       requestId: req.requestId,
     })
@@ -65,6 +72,7 @@ export function createHealthRouter(adapter: SorobanAdapter): Router {
       nodeEnv: env.NODE_ENV,
       uptimeSeconds: Math.floor(process.uptime()),
       dbConnected: getPoolMetrics() !== null,
+      redisStatus: getRedisStatus(),
       requestId: req.requestId,
     }))
   })

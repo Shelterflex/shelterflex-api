@@ -12,6 +12,36 @@ import { ErrorCode } from '../errors/errorCodes.js'
 const router = Router()
 
 /**
+ * GET /api/listings
+ * List approved listings (paginated collection root)
+ */
+router.get('/', async (req: Request, res: Response, next) => {
+  try {
+    const filters = listingFiltersSchema.parse(req.query)
+
+    const result = await listingStore.search({
+      ...filters,
+      query: filters.q ?? filters.query,
+      status: ListingStatus.APPROVED,
+    })
+
+    res.json({
+      success: true,
+      data: result.listings,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ZodError') {
+      return next(new AppError(ErrorCode.VALIDATION_ERROR, 400, error.message))
+    }
+    next(error)
+  }
+})
+
+/**
  * GET /api/listings/search
  * Search approved listings with advanced filters
  */

@@ -25,7 +25,7 @@ function requireTenant(req: Request): string {
  * GET /api/v1/tenant/referral
  * Get tenant's referral code and stats
  */
-router.get('/', authenticateToken, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/tenant/referral', authenticateToken, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tenantId = requireTenant(req)
 
@@ -48,7 +48,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response, next: Nex
  * POST /api/v1/referrals/apply
  * Apply a referral code at registration (public endpoint)
  */
-router.post('/apply', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/referrals/apply', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const parsed = applyReferralCodeSchema.safeParse(req.body)
     if (!parsed.success) {

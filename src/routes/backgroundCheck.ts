@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from "express";
 import { authenticateToken, type AuthenticatedRequest } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/rbac.js";
 import { backgroundCheckService } from "../services/backgroundCheckService.js";
 import { AppError } from "../errors/AppError.js";
 import { ErrorCode } from "../errors/errorCodes.js";
@@ -30,6 +31,7 @@ const router = Router();
 router.post(
   "/tenants/:tenantId/background-check",
   authenticateToken,
+  requirePermission("background-check", "trigger"),
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { tenantId } = req.params;
@@ -96,6 +98,7 @@ router.post(
 router.get(
   "/tenants/:tenantId/background-check",
   authenticateToken,
+  requirePermission("background-check", "view"),
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { tenantId } = req.params;
@@ -133,6 +136,7 @@ router.get(
 router.get(
   "/background-check/:checkId",
   authenticateToken,
+  requirePermission("background-check", "view"),
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { checkId } = req.params;
@@ -170,6 +174,7 @@ router.get(
 router.get(
   "/applications/:applicationId/background-checks",
   authenticateToken,
+  requirePermission("background-check", "view"),
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { applicationId } = req.params;

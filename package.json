@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:backup": "tsx src/scripts/backup.ts",
     "db:restore": "tsx src/scripts/restore.ts",
+    "db:verify": "tsx scripts/verify-migrations.ts",
     "openapi:validate": "redocly lint docs/openapi.yml",
     "openapi:preview": "redocly preview-docs docs/openapi.yml",
     "test": "vitest run",

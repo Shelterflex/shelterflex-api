@@ -47,6 +47,77 @@ describe('Public Listings Search API', () => {
     return approved
   }
 
+  it('returns a paginated collection of approved listings from the root endpoint, with no redirect', async () => {
+    await createApprovedListing({ address: '1 First Street' })
+    await createApprovedListing({ address: '2 Second Street' })
+    await createApprovedListing({ address: '3 Third Street' })
+
+    const response = await request(app).get('/api/listings').redirects(0).expect(200)
+
+    expect(response.body.success).toBe(true)
+    expect(response.body.total).toBe(3)
+    expect(response.body.page).toBe(1)
+    expect(response.body.pageSize).toBe(20)
+    expect(response.body.totalPages).toBe(1)
+    expect(response.body.data).toHaveLength(3)
+  })
+
+  it('paginates the root endpoint and clamps oversized page sizes', async () => {
+    await createApprovedListing({ address: '1 First Street' })
+    await createApprovedListing({ address: '2 Second Street' })
+    await createApprovedListing({ address: '3 Third Street' })
+
+    const paged = await request(app)
+      .get('/api/listings')
+      .query({ page: 2, pageSize: 2 })
+      .expect(200)
+
+    expect(paged.body.total).toBe(3)
+    expect(paged.body.page).toBe(2)
+    expect(paged.body.pageSize).toBe(2)
+    expect(paged.body.data).toHaveLength(1)
+
+    const oversized = await request(app)
+      .get('/api/listings')
+      .query({ pageSize: 500 })
+      .expect(400)
+
+    expect(oversized.body.success).not.toBe(true)
+  })
+
+  it('excludes non-approved listings from the root endpoint', async () => {
+    await createApprovedListing({ address: '1 First Street' })
+    await listingStore.create({
+      whistleblowerId: 'wb-pending',
+      address: '2 Pending Street',
+      city: 'Lagos',
+      area: 'Lekki',
+      bedrooms: 2,
+      bathrooms: 2,
+      annualRentNgn: 2_000_000,
+      description: 'Awaiting review',
+      photos: [
+        'https://example.com/photo-1.jpg',
+        'https://example.com/photo-2.jpg',
+        'https://example.com/photo-3.jpg',
+      ],
+    })
+
+    const response = await request(app).get('/api/listings').expect(200)
+
+    expect(response.body.total).toBe(1)
+    expect(response.body.data[0].address).toBe('1 First Street')
+  })
+
+  it('gets a single approved listing by id, leaving the root and search routes unaffected', async () => {
+    const listing = await createApprovedListing({ address: '9 Ninth Street' })
+
+    const response = await request(app).get(`/api/listings/${listing.listingId}`).expect(200)
+
+    expect(response.body.success).toBe(true)
+    expect(response.body.data.listingId).toBe(listing.listingId)
+  })
+
   it('searches approved listings across description, address, city, and area', async () => {
     await createApprovedListing({
       address: '5 Bourdillon Road',

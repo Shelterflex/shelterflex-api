@@ -43,6 +43,7 @@ vi.mock('../utils/redis.js', () => ({
 
 vi.mock('../utils/logger.js', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logThrottled: vi.fn(),
 }))
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -114,6 +114,9 @@ export type AuditEventType =
   | 'REFERRAL_VIEWED'
   | 'REFERRAL_APPLIED'
   | 'ADMIN_REFERRALS_VIEWED'
+  // Credit bureau
+  | 'CREDIT_REPORT_PULLED'
+  | 'CREDIT_REPORT_VIEWED'
   // Data privacy / erasure
   | 'USER_ERASURE_REQUESTED'
   | 'USER_ERASURE_COMPLETED'

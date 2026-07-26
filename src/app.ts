@@ -9,6 +9,8 @@ import { traceResponseMiddleware } from "./middleware/traceResponse.js"
 import { createLogger } from "./middleware/logger.js"
 import { logger } from "./utils/logger.js"
 import { apiVersioning } from "./middleware/apiVersioning.js"
+import { createLegacyApiRedirect } from "./middleware/legacyApiRedirect.js"
+import { deprecatedMount } from "./middleware/deprecatedMount.js"
 import { createHealthRouter } from "./routes/health.js"
 import { createPrometheusMetricsRouter } from "./routes/prometheusMetrics.js"
 import { mountOpenApiDocs } from "./docs/openApiRegistry.js"
@@ -148,7 +150,6 @@ import { createTenantOnboardingRouter } from "./routes/tenantOnboarding.js";
 import { createAdminTenantCreditScoreRouter } from "./routes/adminTenantCreditScore.js";
 import { createTenantDocumentVaultRouter } from "./routes/tenantDocumentVault.js";
 import { createTenantDocumentsPresignRouter } from "./routes/tenantDocumentsPresign.js";
-import { createTenantDocumentsRouter } from "./routes/tenantDocuments.js";
 import { createReferralsRouter } from "./routes/referrals.js";
 import { createLandlordPayoutScheduleRouter } from "./routes/landlordPayoutSchedule.js";
 import { createDocsRouter } from "./routes/docs.js";
@@ -158,6 +159,13 @@ import { createKycRouter } from "./routes/kyc.js";
 import { createAdminRolesRouter } from "./routes/adminRoles.js";
 import { createAbuseRouter } from "./routes/abuse.js";
 import { createInspectorJobsRouter, createAdminInspectorJobsRouter } from "./routes/inspectorJobs.js";
+import { createQuoteRouter } from "./routes/quote.js";
+import { createPaymentDisputeRouter } from "./routes/paymentDispute.js";
+import { createAdminQuotaRouter } from "./routes/adminQuota.js";
+import { backgroundCheckRouter } from "./routes/backgroundCheck.js";
+import creditBureauRouter from "./routes/creditBureau.js";
+import { createContractEventsRouter } from "./routes/contractEvents.js";
+import { createLeaseAgreementsRouter } from "./routes/leaseAgreements.js";
 import { createPropertyInspectionsRouter } from "./routes/propertyInspections.js";
 import { createRentGuaranteeRouter } from "./routes/rentGuarantee.js";
 import { createTenantRatingCardRouter } from "./routes/tenantRatingCard.js";
@@ -596,6 +604,9 @@ export function createApp() {
   }))
 
   // Core administrative routes
+  // NOTE (issue #4 sweep): unversioned-only, and mounted here ahead of CORS/
+  // body-parsing/rate-limit setup below -- left untouched pending investigation
+  // into whether that ordering is load-bearing before adding a /api/v1 mount.
   app.use(
     "/api/admin/timelock",
     adminTimelockRouter(sorobanAdapter as any, timelockRepo),
@@ -693,7 +704,9 @@ export function createApp() {
     app.use('/api/webhooks', createWebhooksRouter(ngnWalletService))
     app.use('/api/deposits', createDepositsRouter(conversionService))
     app.use('/api/gas-metrics', createGasMetricsRouter())
-    app.use('/api', migrationGuideRouter)
+    // migrationGuideRouter is mounted unconditionally at '/api' further down
+    // (issue #4 sweep: this was a duplicate registration of the same router
+    // on the same path, reachable in test mode).
     app.use("/api", createComprehensiveRateLimiter());
     app.use("/api/auth", authRouter);
     app.use("/api", createBalanceRouter(sorobanAdapter));
@@ -740,7 +753,9 @@ export function createApp() {
     app.use("/api/admin/analytics", createAdminAnalyticsRouter());
     app.use("/api/admin", createAdminTenantCreditScoreRouter());
     app.use("/api/admin/credit-score", createAdminCreditScoreRouter());
-    app.use("/api/admin", createSettlementAdminRouter());
+    // createSettlementAdminRouter() was mounted a second time here at the
+    // same path within this test block (issue #4 sweep) -- it's also
+    // mounted unconditionally at '/api/admin' further down.
     app.use("/api/config/feature-flags", createFeatureFlagsRouter());
     app.use(
       "/api/staking",
@@ -775,11 +790,11 @@ export function createApp() {
       "/api/whistleblower/applications",
       createWhistleblowerApplicationsRouter(),
     );
-    app.use("/api/tenant/payments", createTenantPaymentsRouter());
-    app.use("/api/notifications", createNotificationsRouter());
-    app.use("/api/admin", createSettlementAdminRouter());
-    app.use("/api/admin", createAdminRolesRouter());
-    app.use("/api/apartment-reviews", createApartmentReviewsRouter());
+    // createTenantPaymentsRouter(), createNotificationsRouter(),
+    // createSettlementAdminRouter(), createAdminRolesRouter(), and
+    // createApartmentReviewsRouter() were each mounted a second time here at
+    // the same unversioned path (issue #4 sweep) -- they're mounted
+    // unconditionally further down, which already covers test mode.
     app.use("/api/reports", createWhistleblowerReportsRouter());
     app.use("/api/tenant/data-export", createTenantDataExportRouter());
     app.use("/api/tenant/erasure", createTenantErasureRouter());
@@ -867,23 +882,50 @@ export function createApp() {
     "/api/v1/whistleblower/applications",
     createWhistleblowerApplicationsRouter(),
   );
-  app.use("/api/tenant/payments", createTenantPaymentsRouter());
-  app.use("/api/notifications", createNotificationsRouter());
-  app.use("/api/admin", createSettlementAdminRouter());
-  app.use("/api/admin", createAdminRolesRouter());
-  app.use("/api/apartment-reviews", createApartmentReviewsRouter());
-  app.use("/api/compliance/reports", createComplianceReportRouter());
-  app.use("/api/kyc", createKycRouter());
-  app.use("/api/admin/abuse", createAbuseRouter());
-  app.use("/api/tenant/credit-scoring", createTenantCreditScoringRouter());
-  app.use("/api/tenant/credit-score", createCreditScoreRouter());
-  app.use("/api/tenant/onboarding", createTenantOnboardingRouter());
-  app.use("/api/tenant/vault", createTenantDocumentVaultRouter());
-  app.use("/api/listings", createListingsRouter());
-  app.use("/api", listingApplicationsRouter);
-  app.use("/api/landlord/payout-schedule", createLandlordPayoutScheduleRouter());
+  // Routers below are mounted at both their unversioned /api/* path (kept
+  // temporarily for backward compatibility, marked deprecated, target
+  // removal 6 months out) and their /api/v1/* counterpart (issue #4).
+  app.use("/api/tenant/payments", deprecatedMount(), createTenantPaymentsRouter());
+  app.use("/api/v1/tenant/payments", createTenantPaymentsRouter());
+  app.use("/api/notifications", deprecatedMount(), createNotificationsRouter());
+  app.use("/api/v1/notifications", createNotificationsRouter());
+  // createSettlementAdminRouter() is already mounted at /api/v1/admin above;
+  // this unversioned copy just needs the deprecation header.
+  app.use("/api/admin", deprecatedMount(), createSettlementAdminRouter());
+  app.use("/api/admin", deprecatedMount(), createAdminRolesRouter());
+  app.use("/api/v1/admin", createAdminRolesRouter());
+  app.use("/api/apartment-reviews", deprecatedMount(), createApartmentReviewsRouter());
+  app.use("/api/v1/apartment-reviews", createApartmentReviewsRouter());
+  app.use("/api/compliance/reports", deprecatedMount(), createComplianceReportRouter());
+  app.use("/api/v1/compliance/reports", createComplianceReportRouter());
+  app.use("/api/kyc", deprecatedMount(), createKycRouter());
+  app.use("/api/v1/kyc", createKycRouter());
+  app.use("/api/admin/abuse", deprecatedMount(), createAbuseRouter());
+  app.use("/api/v1/admin/abuse", createAbuseRouter());
+  app.use("/api/tenant/credit-scoring", deprecatedMount(), createTenantCreditScoringRouter());
+  app.use("/api/v1/tenant/credit-scoring", createTenantCreditScoringRouter());
+  app.use("/api/tenant/credit-score", deprecatedMount(), createCreditScoreRouter());
+  app.use("/api/v1/tenant/credit-score", createCreditScoreRouter());
+  app.use("/api/tenant/onboarding", deprecatedMount(), createTenantOnboardingRouter());
+  app.use("/api/v1/tenant/onboarding", createTenantOnboardingRouter());
+  app.use("/api/tenant/vault", deprecatedMount(), createTenantDocumentVaultRouter());
+  app.use("/api/v1/tenant/vault", createTenantDocumentVaultRouter());
+  app.use("/api/documents", deprecatedMount(), createTenantDocumentsPresignRouter());
+  app.use("/api/v1/documents", createTenantDocumentsPresignRouter());
+  app.use("/api/listings", deprecatedMount(), createListingsRouter());
+  app.use("/api/v1/listings", createListingsRouter());
+  app.use("/api", deprecatedMount(), listingApplicationsRouter);
+  app.use("/api/v1", listingApplicationsRouter);
+  app.use("/api/landlord/payout-schedule", deprecatedMount(), createLandlordPayoutScheduleRouter());
+  app.use("/api/v1/landlord/payout-schedule", createLandlordPayoutScheduleRouter());
+  // Inbound webhook receiver called by an external KYC provider at a
+  // pre-configured URL -- left unversioned-only; see PR notes (issue #4 sweep).
   app.use("/api/webhooks/kyc", createKycWebhookRouter());
-  app.use("/api/onboarding", createOnboardingRouter());
+  app.use("/api/onboarding", deprecatedMount(), createOnboardingRouter());
+  app.use("/api/v1/onboarding", createOnboardingRouter());
+  // migrationGuideRouter explains the /api -> /api/v1 versioning scheme
+  // itself and is already mounted at /api/v1 above; deprecation headers
+  // don't apply to it.
   app.use("/api", migrationGuideRouter);
 
   // Account and data retention routes
@@ -904,32 +946,41 @@ export function createApp() {
   // Tenant rating card routes
   app.use('/api/v1', createTenantRatingCardRouter(sorobanAdapter))
 
+  // Pricing calculator (public, no auth)
+  app.use('/api/v1/quote', createQuoteRouter())
+
+  // Payment dispute routes (auth + RBAC applied per-route inside the router)
+  app.use('/api/v1/disputes', createPaymentDisputeRouter())
+
+  // Referral program: tenant self-service view, public apply-code, admin view
+  app.use('/api/v1', createReferralsRouter())
+
+  // Admin: per-user/endpoint rate limit overrides (RBAC applied per-route)
+  app.use('/api/admin/quota', deprecatedMount(), createAdminQuotaRouter())
+  app.use('/api/v1/admin/quota', createAdminQuotaRouter())
+
+  // Admin: tenant background checks (RBAC applied per-route)
+  app.use('/api/admin', deprecatedMount(), backgroundCheckRouter)
+  app.use('/api/v1/admin', backgroundCheckRouter)
+
+  // Admin: credit bureau report pulls (RBAC applied per-route)
+  app.use('/api', deprecatedMount(), creditBureauRouter)
+  app.use('/api/v1', creditBureauRouter)
+
+  // Admin: indexed Soroban contract event browser (RBAC applied per-route)
+  app.use('/api', deprecatedMount(), createContractEventsRouter())
+  app.use('/api/v1', createContractEventsRouter())
+
+  // Lease agreement generation + e-signature — gated off by default; PDF
+  // generation and the e-signature provider are still mock/in-memory stubs.
+  app.use('/api/v1', requireFlag('LEASE_AGREEMENTS_ENABLED'), createLeaseAgreementsRouter())
+
   // Interactive API documentation
   app.use("/docs", createDocsRouter());
 
   // Backward compatibility redirect from /api/* to /api/v1/*
   // In test mode, also mount routes at /api/ to avoid breaking existing tests
-  app.use('/api', (req, res, next) => {
-    // Skip if already on /api/v1 path
-    if (req.path.startsWith('/v1')) {
-      return next()
-    }
-    
-    // In test mode, allow /api/ to work by not redirecting
-    // Routes will be mounted at both /api/ and /api/v1/ in test mode
-    if (env.NODE_ENV === 'test') {
-      return next()
-    }
-    
-    // Redirect to /api/v1/* with deprecation headers
-    const newPath = `/api/v1${req.path}`
-    res.setHeader('Deprecation', 'true')
-    const sunsetDate = new Date()
-    sunsetDate.setMonth(sunsetDate.getMonth() + 6)
-    res.setHeader('Sunset', sunsetDate.toISOString().split('T')[0])
-    res.setHeader('Link', '</api/v1>; rel="successor-version"')
-    res.redirect(307, newPath)
-  })
+  app.use('/api', createLegacyApiRedirect(app, { bypass: env.NODE_ENV === 'test' }))
 
   // 404 catch-all — must be after all routes, before errorHandler
   app.use("*", (_req, _res, next) => {

@@ -240,19 +240,28 @@ describe('DataRetentionService', () => {
     })
 
     it('matches purge eligibility - count reflects purgable records', async () => {
-      // Same data shape in both functions should yield matching counts
-      const cutoffDate = new Date()
-      cutoffDate.setFullYear(cutoffDate.getFullYear() - 7)
+      // Freeze the clock so the cutoff computed here and the one computed
+      // inside getPendingPurgeCount resolve to the exact same instant --
+      // otherwise two independent `new Date()` calls can straddle a
+      // millisecond boundary and fail this assertion intermittently.
+      vi.useFakeTimers()
+      try {
+        // Same data shape in both functions should yield matching counts
+        const cutoffDate = new Date()
+        cutoffDate.setFullYear(cutoffDate.getFullYear() - 7)
 
-      mockQuery.mockResolvedValue({ rows: [{ count: '4' }], rowCount: 0 } as any)
+        mockQuery.mockResolvedValue({ rows: [{ count: '4' }], rowCount: 0 } as any)
 
-      const counts = await getPendingPurgeCount()
+        const counts = await getPendingPurgeCount()
 
-      expect(counts.users).toBe(4)
-      expect(counts.sessions).toBe(4)
-      // Verify cutoff date matches retention period
-      const queryCall = mockQuery.mock.calls[0]!
-      expect(queryCall[1][0]).toEqual(cutoffDate)
+        expect(counts.users).toBe(4)
+        expect(counts.sessions).toBe(4)
+        // Verify cutoff date matches retention period
+        const queryCall = mockQuery.mock.calls[0]!
+        expect(queryCall[1][0]).toEqual(cutoffDate)
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('returns zero for tables with no pending purge records', async () => {

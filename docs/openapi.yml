@@ -45,6 +45,14 @@ paths:
                     type: number
                     format: int64
                     example: 3600
+                  redisStatus:
+                    type: string
+                    enum: [ready, connecting, unavailable, disabled]
+                    description: >
+                      Synchronous Redis connection status. Never blocks this
+                      endpoint — reports "unavailable" instead of hanging
+                      when Redis is unreachable.
+                    example: ready
         "429":
           $ref: "#/components/responses/TooManyRequests"
         default:
@@ -2183,6 +2191,312 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /api/v1/quote:
+    get:
+      summary: Get a rent pricing quote
+      description: >-
+        Returns outright and installment-tier pricing for a given annual
+        rent and deposit percentage. Public endpoint, no authentication
+        required.
+      operationId: getQuote
+      tags:
+        - Pricing
+      parameters:
+        - name: annualRentNgn
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: depositPercent
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 0.2
+            maximum: 1
+            default: 0.2
+      responses:
+        '200':
+          description: Pricing breakdown for outright and installment tiers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/disputes:
+    post:
+      summary: File a payment dispute
+      description: Authenticated user files a dispute against one of their own payments.
+      operationId: createPaymentDispute
+      tags:
+        - Disputes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - paymentId
+                - reason
+                - description
+              properties:
+                paymentId:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+                  enum: [amount_discrepancy, duplicate_charge, service_not_received, early_termination, property_issue, other]
+                description:
+                  type: string
+                evidenceKeys:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Dispute created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  disputeId:
+                    type: string
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/disputes/my:
+    get:
+      summary: List my payment disputes
+      operationId: listMyPaymentDisputes
+      tags:
+        - Disputes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The authenticated user's disputes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disputes:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/disputes/admin:
+    get:
+      summary: List all payment disputes (admin)
+      description: Requires the `disputes:view` permission.
+      operationId: listAllPaymentDisputes
+      tags:
+        - Disputes
+        - Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated dispute list
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/disputes/admin/{disputeId}/resolve:
+    post:
+      summary: Resolve or reject a payment dispute (admin)
+      description: Requires the `disputes:resolve` permission.
+      operationId: resolvePaymentDispute
+      tags:
+        - Disputes
+        - Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: disputeId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [resolved, rejected]
+                resolution:
+                  type: string
+      responses:
+        '200':
+          description: Dispute updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/tenant/referral:
+    get:
+      summary: Get my referral code and stats
+      operationId: getTenantReferralStats
+      tags:
+        - Referrals
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Referral code, link, and reward stats for the authenticated tenant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Non-tenant caller
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/referrals/apply:
+    post:
+      summary: Apply a referral code
+      description: >-
+        Public endpoint used during/after registration to link a referral
+        code to a tenant. Self-referral and duplicate conversions are
+        rejected server-side.
+      operationId: applyReferralCode
+      tags:
+        - Referrals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - referralCode
+              properties:
+                referralCode:
+                  type: string
+                  minLength: 8
+                  maxLength: 8
+                referredTenantId:
+                  type: string
+                  description: Required when the caller is not authenticated.
+      responses:
+        '201':
+          description: Referral code applied
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/admin/referrals:
+    get:
+      summary: List all referral conversions (admin)
+      operationId: listAdminReferrals
+      tags:
+        - Referrals
+        - Admin
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All referral conversions with referrer/referred details
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          description: Non-admin caller
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
   schemas:
     User:
@@ -3539,6 +3853,12 @@ components:
 tags:
   - name: Health
     description: Health check operations
+  - name: Pricing
+    description: Public rent pricing/quote calculator
+  - name: Disputes
+    description: Payment dispute filing and resolution
+  - name: Referrals
+    description: Tenant referral program
   - name: Soroban
     description: Soroban blockchain configuration
   - name: Auth
