@@ -22,6 +22,8 @@ Postgres + MinIO are easiest to run via the full-stack compose in
 ```bash
 npm install
 cp .env.example .env
+npm run db:migrate   # create the schema
+npm run db:seed      # load the development dataset
 npm run dev
 ```
 
@@ -29,6 +31,67 @@ npm run dev
 out of the box — replace `ENCRYPTION_KEY` and `WEBHOOK_KEY` with real generated
 values before using this outside local development (see the comments in
 `.env.example` for how to generate each one).
+
+`npm run dev` also applies pending migrations on startup, so `db:migrate` is
+only needed when you want the schema without booting the server. Skipping
+`db:seed` leaves you with an empty database: every listing page, search result
+and dashboard renders empty, which is indistinguishable from a broken build.
+
+## Seed data
+
+`npm run db:seed` loads a small, deterministic development dataset: accounts for
+every role, landlord properties with photos, public listings across several
+cities and price bands, two leases with instalment history, inspection jobs and
+tenant applications.
+
+### Seeded accounts
+
+Authentication is passwordless — request an OTP for one of these addresses and
+read the code from the server console (`OTP_DELIVERY_PROVIDER=console` is the
+default in `.env.example`). All addresses use the reserved `example.com` domain
+and all data is fictional.
+
+| Role | Email | Name |
+|---|---|---|
+| tenant | `tenant@example.com` | Tola Tenant — has an active lease with payment history |
+| tenant | `tenant2@example.com` | Temi Tenant — has a completed lease |
+| landlord | `landlord@example.com` | Lola Landlord — owns 3 properties |
+| landlord | `landlord2@example.com` | Lanre Landlord — owns 3 properties |
+| admin | `admin@example.com` | Ada Admin — also granted the `super_admin` RBAC role |
+| inspector | `inspector@example.com` | Ike Inspector — verified, has assigned jobs |
+| agent | `agent@example.com` | Ayo Agent |
+
+```bash
+curl -X POST localhost:4000/api/v1/auth/request-otp \
+  -H 'content-type: application/json' -d '{"email":"landlord@example.com"}'
+# the OTP is printed in the server log; then:
+curl -X POST localhost:4000/api/v1/auth/verify-otp \
+  -H 'content-type: application/json' -d '{"email":"landlord@example.com","otp":"123456"}'
+```
+
+### Behaviour
+
+- **Idempotent.** Every row is upserted on a fixed primary key, so running the
+  seed repeatedly refreshes the same rows and never duplicates them.
+- **Deterministic ids.** Seeded UUIDs all start with `5eed`, so tests can
+  reference stable ids (see `src/seeds/devData.ts`) and
+  `WHERE id::text LIKE '5eed%'` finds seeded rows. Only the payment due dates
+  move — they are anchored to the current month so the dataset stays plausible.
+- **Transactional.** The whole seed runs in one transaction; a failure part-way
+  through rolls back and leaves the database exactly as it was. You can prove
+  this with `npm run db:seed -- --simulate-failure`, which aborts mid-run on
+  purpose.
+- **Guarded.** The seed refuses to run when `NODE_ENV=production` (no override),
+  and any database host that is not local needs explicit confirmation:
+  `npm run db:seed -- --allow-remote` (or `SEED_ALLOW_REMOTE=true`).
+
+### Starting over
+
+```bash
+npm run db:reset     # drop the schema, re-run every migration, seed
+```
+
+`db:reset` is destructive and goes through the same guard as `db:seed`.
 
 ## Testing
 
@@ -65,10 +128,14 @@ Tests are located in `src/**/*.test.ts` files and use Vitest + Supertest.
 
 SQL migrations live in `migrations/` and are applied in filename order.
 
-The repository includes a migration runner script in `src/repositories/test.ts` that:
+`npm run db:migrate` (and the server on startup) runs the migration runner in
+`src/migrations/runMigrations.ts`, which:
 
 - creates a `schema_migrations` table if missing
-- applies any `.sql` files not yet recorded
+- applies any `.sql` files not yet recorded, each in its own transaction
+
+`npm run db:verify` applies every migration to a throwaway database to check
+that the schema builds from empty.
 
 ## Documentation
 
