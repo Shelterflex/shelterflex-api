@@ -66,6 +66,7 @@ export async function syncLandlordPropertyListing(
 
   const listing = await listingStore.create({
     whistleblowerId: SYSTEM_WHISTLEBLOWER_ID,
+    landlordId: property.landlordId,
     address: property.address,
     city: property.city,
     area: property.area,
