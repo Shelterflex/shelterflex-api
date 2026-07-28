@@ -12,6 +12,7 @@ export enum ListingStatus {
 export interface Listing {
   listingId: string
   whistleblowerId: string
+  landlordId?: string
   address: string
   city?: string
   area?: string
@@ -41,6 +42,7 @@ export interface ListingSearchResult extends Listing {
 
 export interface CreateListingInput {
   whistleblowerId: string
+  landlordId?: string
   address: string
   city?: string
   area?: string

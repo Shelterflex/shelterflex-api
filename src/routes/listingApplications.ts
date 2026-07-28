@@ -6,6 +6,7 @@
 import { Router, Request, Response } from "express";
 import { applicationService } from "../services/applicationService.js";
 import { listingApplicationRepository } from "../repositories/ListingApplicationRepository.js";
+import { listingStore } from "../models/listingStore.js";
 import {
   ListingApplicationStatus,
   PaymentPlan,
@@ -54,8 +55,25 @@ router.post(
         );
       }
 
-      // For now, using a placeholder landlordId - in production, fetch from listing
-      const landlordId = "placeholder-landlord";
+      // Resolve landlord from listing
+      const listing = await listingStore.getById(listingId);
+      if (!listing) {
+        throw new AppError(
+          ErrorCode.NOT_FOUND,
+          404,
+          "Listing not found",
+        );
+      }
+
+      if (!listing.landlordId) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          400,
+          "Listing does not have an associated landlord. Applications cannot be submitted to listings without a landlord.",
+        );
+      }
+
+      const landlordId = listing.landlordId;
 
       const application = await applicationService.apply({
         listingId,

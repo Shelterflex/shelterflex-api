@@ -33,11 +33,12 @@ class InMemoryListingStore implements ListingStorePort {
   private listings = new Map<string, Listing>()
   private whistleblowerMonthlyReports = new Map<string, Date[]>()
 
-  async create(input: CreateListingInput): Promise<Listing> {
+  async create(input: CreateListingInput & { landlordId?: string }): Promise<Listing> {
     const now = new Date()
     const listing: Listing = {
       listingId: randomUUID(),
       whistleblowerId: input.whistleblowerId,
+      landlordId: input.landlordId,
       address: input.address,
       city: input.city,
       area: input.area,
@@ -236,6 +237,7 @@ class InMemoryListingStore implements ListingStorePort {
 type ListingRow = {
   listing_id: string
   whistleblower_id: string
+  landlord_id: string | null
   address: string
   city: string | null
   area: string | null
@@ -271,13 +273,14 @@ class PostgresListingStore implements ListingStorePort {
     return (await getPool()) !== null
   }
 
-  async create(input: CreateListingInput): Promise<Listing> {
+  async create(input: CreateListingInput & { landlordId?: string }): Promise<Listing> {
     const pool = await this.pool()
     const listingId = randomUUID()
     const { rows } = await pool.query(
       `INSERT INTO whistleblower_listings (
         listing_id,
         whistleblower_id,
+        landlord_id,
         address,
         city,
         area,
@@ -289,11 +292,12 @@ class PostgresListingStore implements ListingStorePort {
         negotiated_landlord_rate_ngn,
         description,
         photos
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
       RETURNING *`,
       [
         listingId,
         input.whistleblowerId,
+        input.landlordId ?? null,
         input.address,
         input.city ?? null,
         input.area ?? null,
@@ -546,6 +550,7 @@ class PostgresListingStore implements ListingStorePort {
     return {
       listingId: row.listing_id,
       whistleblowerId: row.whistleblower_id,
+      landlordId: row.landlord_id ?? undefined,
       address: row.address,
       city: row.city ?? undefined,
       area: row.area ?? undefined,
