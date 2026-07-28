@@ -374,4 +374,179 @@ describe('ApplicationService', () => {
       expect(result.status).toBe('withdrawn')
     })
   })
+
+  describe('landlord ownership (issue #19)', () => {
+    it('stores the correct landlord_id in the application', async () => {
+      const tenantId = 'tenant-1'
+      const listingId = 'listing-1'
+      const landlordId = 'landlord-123'
+      const input: CreateListingApplicationInput = {
+        tenantId,
+        listingId,
+        landlordId,
+        preferredStartDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+        paymentPlan: PaymentPlan.SIX_MONTHS,
+      }
+      const mockApplication: ListingApplication = {
+        id: 'app-1',
+        tenantId,
+        listingId,
+        landlordId,
+        status: ListingApplicationStatus.PENDING,
+        preferredStartDate: input.preferredStartDate,
+        paymentPlan: input.paymentPlan,
+        appliedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+
+      vi.mocked(listingApplicationRepository.findDuplicateActive).mockResolvedValue(null)
+      vi.mocked(listingApplicationRepository.create).mockResolvedValue(mockApplication)
+      vi.mocked(auditLog).mockImplementation(() => {})
+
+      const result = await applicationService.apply(input)
+
+      expect(result.landlordId).toBe(landlordId)
+      expect(listingApplicationRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ landlordId })
+      )
+    })
+
+    it('owning landlord can approve application', async () => {
+      const applicationId = 'app-1'
+      const landlordId = 'landlord-123'
+      const mockApplication: ListingApplication = {
+        id: applicationId,
+        tenantId: 'tenant-1',
+        listingId: 'listing-1',
+        landlordId,
+        status: ListingApplicationStatus.PENDING,
+        preferredStartDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+        paymentPlan: PaymentPlan.SIX_MONTHS,
+        appliedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+
+      vi.mocked(listingApplicationRepository.findById).mockResolvedValue(mockApplication)
+      vi.mocked(listingApplicationRepository.updateStatus).mockResolvedValue({
+        ...mockApplication,
+        status: ListingApplicationStatus.APPROVED,
+      })
+      vi.mocked(auditLog).mockImplementation(() => {})
+
+      const result = await applicationService.reviewApplication(applicationId, landlordId, 'approve')
+
+      expect(result.status).toBe(ListingApplicationStatus.APPROVED)
+      expect(listingApplicationRepository.updateStatus).toHaveBeenCalledWith(
+        applicationId,
+        'approved',
+        landlordId,
+        undefined
+      )
+    })
+
+    it('owning landlord can reject application', async () => {
+      const applicationId = 'app-1'
+      const landlordId = 'landlord-123'
+      const mockApplication: ListingApplication = {
+        id: applicationId,
+        tenantId: 'tenant-1',
+        listingId: 'listing-1',
+        landlordId,
+        status: ListingApplicationStatus.PENDING,
+        preferredStartDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+        paymentPlan: PaymentPlan.SIX_MONTHS,
+        appliedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+
+      vi.mocked(listingApplicationRepository.findById).mockResolvedValue(mockApplication)
+      vi.mocked(listingApplicationRepository.updateStatus).mockResolvedValue({
+        ...mockApplication,
+        status: ListingApplicationStatus.REJECTED,
+      })
+      vi.mocked(auditLog).mockImplementation(() => {})
+
+      const result = await applicationService.reviewApplication(applicationId, landlordId, 'reject', 'Not qualified')
+
+      expect(result.status).toBe(ListingApplicationStatus.REJECTED)
+      expect(listingApplicationRepository.updateStatus).toHaveBeenCalledWith(
+        applicationId,
+        'rejected',
+        landlordId,
+        'Not qualified'
+      )
+    })
+
+    it('different landlord gets 403 when trying to review', async () => {
+      const applicationId = 'app-1'
+      const owningLandlordId = 'landlord-123'
+      const differentLandlordId = 'landlord-456'
+      const mockApplication: ListingApplication = {
+        id: applicationId,
+        tenantId: 'tenant-1',
+        listingId: 'listing-1',
+        landlordId: owningLandlordId,
+        status: ListingApplicationStatus.PENDING,
+        preferredStartDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+        paymentPlan: PaymentPlan.SIX_MONTHS,
+        appliedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+
+      vi.mocked(listingApplicationRepository.findById).mockResolvedValue(mockApplication)
+
+      await expect(
+        applicationService.reviewApplication(applicationId, differentLandlordId, 'approve')
+      ).rejects.toThrow('You can only review applications for your own listings')
+
+      expect(listingApplicationRepository.updateStatus).not.toHaveBeenCalled()
+    })
+
+    it('includes landlordId in ApplicationSubmitted notification payload', async () => {
+      const tenantId = 'tenant-1'
+      const listingId = 'listing-1'
+      const landlordId = 'landlord-123'
+      const input: CreateListingApplicationInput = {
+        tenantId,
+        listingId,
+        landlordId,
+        preferredStartDate: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+        paymentPlan: PaymentPlan.SIX_MONTHS,
+      }
+      const mockApplication: ListingApplication = {
+        id: 'app-1',
+        tenantId,
+        listingId,
+        landlordId,
+        status: ListingApplicationStatus.PENDING,
+        preferredStartDate: input.preferredStartDate,
+        paymentPlan: input.paymentPlan,
+        appliedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+
+      vi.mocked(listingApplicationRepository.findDuplicateActive).mockResolvedValue(null)
+      vi.mocked(listingApplicationRepository.create).mockResolvedValue(mockApplication)
+      vi.mocked(auditLog).mockImplementation(() => {})
+
+      await applicationService.apply(input)
+
+      expect(outboxStore.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            type: 'ApplicationSubmitted',
+            tenantId,
+            landlordId,
+            listingId,
+            applicationId: mockApplication.id,
+          }),
+        })
+      )
+    })
+  })
 })
