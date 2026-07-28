@@ -4,6 +4,12 @@ import express from 'express'
 import { errorHandler } from '../middleware/errorHandler.js'
 import { createAdminAuditRouter } from './adminAudit.js'
 
+// Mock requireAdmin to bypass authorization in tests
+vi.mock('../middleware/requireAdmin.js', () => ({
+  requireAdmin: () => (_req: any, _res: any, next: any) => next(),
+  assertAdminAuth: () => {},
+}))
+
 /**
  * Tests for GET /api/admin/audit and GET /api/admin/audit/verify.
  *
@@ -43,8 +49,6 @@ function buildApp() {
   app.use(express.json())
   app.use((req: any, _res: any, next: any) => {
     req.requestId = 'test-request-id'
-    // Add admin secret header to bypass requireAdmin middleware in tests
-    req.headers['x-admin-secret'] = 'test-secret-123'
     next()
   })
   app.use('/api/admin', createAdminAuditRouter())
