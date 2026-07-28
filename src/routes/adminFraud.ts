@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
 import { validate } from '../middleware/validate.js'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { env } from '../schemas/env.js'
@@ -52,12 +53,6 @@ const updateThresholdsSchema = z.object({
 export function createAdminFraudRouter() {
   const router = Router()
 
-  function requireAdmin(req: Request) {
-    const headerSecret = req.headers['x-admin-secret']
-    if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-      throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-    }
-  }
 
   // ---------------------------------------------------------------------------
   // Signal Management
@@ -69,7 +64,7 @@ export function createAdminFraudRouter() {
    */
   router.get('/signals', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       const enabled = req.query.enabled === 'true' ? true : req.query.enabled === 'false' ? false : undefined
       const signals = await getFraudStore().listSignals({ enabled })
       res.json({ signals })
@@ -84,7 +79,7 @@ export function createAdminFraudRouter() {
    */
   router.get('/signals/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       const signal = await getFraudStore().getSignal(req.params.id)
       if (!signal) throw new AppError(ErrorCode.NOT_FOUND, 404, `Signal ${req.params.id} not found`)
       res.json({ signal })
@@ -102,7 +97,7 @@ export function createAdminFraudRouter() {
     validate(createSignalSchema),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const body = req.body as z.infer<typeof createSignalSchema>
         const signal = await getFraudStore().createSignal(body)
         res.status(201).json({ signal })
@@ -121,7 +116,7 @@ export function createAdminFraudRouter() {
     validate(updateSignalSchema),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const body = req.body as z.infer<typeof updateSignalSchema>
         const signal = await getFraudStore().updateSignal(req.params.id, body)
         res.json({ signal })
@@ -137,7 +132,7 @@ export function createAdminFraudRouter() {
    */
   router.delete('/signals/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       await getFraudStore().deleteSignal(req.params.id)
       res.json({ success: true })
     } catch (err) {
@@ -151,7 +146,7 @@ export function createAdminFraudRouter() {
    */
   router.post('/signals/:id/enable', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       await getFraudStore().enableSignal(req.params.id)
       res.json({ success: true })
     } catch (err) {
@@ -165,7 +160,7 @@ export function createAdminFraudRouter() {
    */
   router.post('/signals/:id/disable', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       await getFraudStore().disableSignal(req.params.id)
       res.json({ success: true })
     } catch (err) {
@@ -186,7 +181,7 @@ export function createAdminFraudRouter() {
     validate(evaluateEventSchema),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const body = req.body as z.infer<typeof evaluateEventSchema>
         const engine = getFraudEngine()
         const assessment = await engine.evaluate(body)
@@ -206,7 +201,7 @@ export function createAdminFraudRouter() {
     validate(listAssessmentsQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const { riskLevel, limit, offset } = req.query as unknown as z.infer<typeof listAssessmentsQuerySchema>
         const assessments = await getFraudStore().listAssessments({ riskLevel, limit, offset })
         res.json({ assessments })
@@ -222,7 +217,7 @@ export function createAdminFraudRouter() {
    */
   router.get('/assessments/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       const assessment = await getFraudStore().getAssessment(req.params.id)
       if (!assessment) throw new AppError(ErrorCode.NOT_FOUND, 404, `Assessment ${req.params.id} not found`)
       res.json({ assessment })
@@ -239,7 +234,7 @@ export function createAdminFraudRouter() {
     '/assessments/entity/:type/:id',
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const entityType = req.params.type as EntityType
         const entityId = req.params.id
         const limit = parseInt(req.query.limit as string) || 50
@@ -261,7 +256,7 @@ export function createAdminFraudRouter() {
    */
   router.get('/holds/:accountId', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       const holds = await getFraudStore().getActiveHolds(req.params.accountId)
       res.json({ holds })
     } catch (err) {
@@ -278,7 +273,7 @@ export function createAdminFraudRouter() {
     validate(releaseHoldSchema),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const { releasedBy } = req.body as z.infer<typeof releaseHoldSchema>
         await getFraudStore().releaseHold(req.params.holdId, releasedBy)
         res.json({ success: true })
@@ -298,7 +293,7 @@ export function createAdminFraudRouter() {
    */
   router.get('/thresholds', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
       const engine = getFraudEngine()
       const thresholds = engine.getThresholds()
       res.json({ thresholds })
@@ -316,7 +311,7 @@ export function createAdminFraudRouter() {
     validate(updateThresholdsSchema),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const body = req.body as z.infer<typeof updateThresholdsSchema>
         const engine = getFraudEngine()
         engine.updateThresholds(body)

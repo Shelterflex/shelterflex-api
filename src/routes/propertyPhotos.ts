@@ -1,6 +1,7 @@
 import { Router, Response } from 'express'
 import multer from 'multer'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { propertyPhotoStore } from '../models/propertyPhotoStore.js'
 import { landlordPropertyStore } from '../models/landlordPropertyStore.js'
 import { validate } from '../middleware/validate.js'
@@ -50,8 +51,12 @@ router.get(
         throw new AppError(ErrorCode.NOT_FOUND, 404, 'Property not found')
       }
 
-      if (property.landlordId !== req.user?.id && req.user?.role !== 'admin') {
-        throw new AppError(ErrorCode.FORBIDDEN, 403, 'You do not have permission to view these photos')
+      if (property.landlordId !== req.user?.id) {
+        try {
+          requireAdmin({ mode: 'session' })(req as any, {} as any, (err: any) => { if (err) throw err })
+        } catch {
+          throw new AppError(ErrorCode.FORBIDDEN, 403, 'You do not have permission to view these photos')
+        }
       }
 
       const filters = photoFiltersSchema.parse({ ...req.query, propertyId: req.params.propertyId })
@@ -83,8 +88,12 @@ router.get(
         throw new AppError(ErrorCode.NOT_FOUND, 404, 'Property not found')
       }
 
-      if (property.landlordId !== req.user?.id && req.user?.role !== 'admin') {
-        throw new AppError(ErrorCode.FORBIDDEN, 403, 'You do not have permission to view this photo')
+      if (property.landlordId !== req.user?.id) {
+        try {
+          requireAdmin({ mode: 'session' })(req as any, {} as any, (err: any) => { if (err) throw err })
+        } catch {
+          throw new AppError(ErrorCode.FORBIDDEN, 403, 'You do not have permission to view this photo')
+        }
       }
 
       res.json(photo)

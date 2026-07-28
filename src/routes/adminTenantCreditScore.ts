@@ -4,19 +4,11 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { tenantCreditScoringService } from '../services/tenantCreditScoringService.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 
-function requireAdmin(req: Request): void {
-  const user = (req as AuthenticatedRequest).user as { role?: string } | undefined
-  if (!user) {
-    throw new AppError(ErrorCode.UNAUTHORIZED, 401, 'Authentication required')
-  }
-  if (user.role !== 'admin' && user.role !== 'super_admin') {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Admin role required')
-  }
-}
 
 export function createAdminTenantCreditScoreRouter(): Router {
   const router = Router()
@@ -24,9 +16,9 @@ export function createAdminTenantCreditScoreRouter(): Router {
   router.get(
     '/tenants/:tenantId/credit-score',
     authenticateToken,
+    requireAdmin({ mode: 'session' }),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
         const { tenantId } = req.params
         if (!tenantId) {
           throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'tenantId is required')

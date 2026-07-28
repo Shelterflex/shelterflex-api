@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
 import { validate } from '../middleware/validate.js'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { env } from '../schemas/env.js'
@@ -31,12 +32,6 @@ const rescheduleBodySchema = z.object({
 export function createAdminJobsRouter() {
   const router = Router()
 
-  function requireAdmin(req: Request) {
-    const headerSecret = req.headers['x-admin-secret']
-    if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-      throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-    }
-  }
 
   /**
    * GET /api/admin/jobs
@@ -47,7 +42,7 @@ export function createAdminJobsRouter() {
     validate(listJobsQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const { status, limit, offset } = req.query as unknown as z.infer<typeof listJobsQuerySchema>
         const jobs = await getJobStore().listAll({ status, limit, offset })
         res.json({ jobs })
@@ -81,7 +76,7 @@ export function createAdminJobsRouter() {
     validate(scheduleJobBodySchema),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const body = req.body as z.infer<typeof scheduleJobBodySchema>
         const job = await getScheduler().schedule(body)
         res.status(201).json({ job })
@@ -100,7 +95,7 @@ export function createAdminJobsRouter() {
     validate(rescheduleBodySchema),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const { nextRunAt } = req.body as z.infer<typeof rescheduleBodySchema>
         const store = getJobStore()
         const job = await store.findById(req.params.id)

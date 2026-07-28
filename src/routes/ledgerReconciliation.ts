@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
 import { env } from '../schemas/env.js'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { validate } from '../middleware/validate.js'
@@ -15,13 +16,6 @@ import { runReconciliationPass } from '../reconciliation/engine.js'
 import { runResolutionPass } from '../reconciliation/resolver.js'
 import type { MismatchStatus, MismatchClass } from '../reconciliation/types.js'
 
-function requireAdmin(req: Request, _res: Response, next: NextFunction) {
-  const headerSecret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-    return next(new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret'))
-  }
-  return next()
-}
 
 const mismatchQuerySchema = z.object({
   status: z.enum(['open', 'auto_resolved', 'escalated', 'closed']).optional(),
@@ -61,7 +55,7 @@ export function createLedgerReconciliationRouter() {
   /** GET /api/admin/ledger-reconciliation/mismatches — paginated mismatch list */
   router.get(
     '/mismatches',
-    requireAdmin,
+    requireAdmin(),
     validate(mismatchQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
@@ -82,7 +76,7 @@ export function createLedgerReconciliationRouter() {
   /** GET /api/admin/ledger-reconciliation/aging — SLA aging report grouped by class/status */
   router.get(
     '/aging',
-    requireAdmin,
+    requireAdmin(),
     async (_req: Request, res: Response, next: NextFunction) => {
       try {
         const report = await getMismatchAgingReport()
@@ -98,7 +92,7 @@ export function createLedgerReconciliationRouter() {
   /** POST /api/admin/ledger-reconciliation/mismatches/:id/close — manually close a mismatch */
   router.post(
     '/mismatches/:id/close',
-    requireAdmin,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { id } = req.params
@@ -116,7 +110,7 @@ export function createLedgerReconciliationRouter() {
   /** POST /api/admin/ledger-reconciliation/run — trigger an immediate reconciliation pass */
   router.post(
     '/run',
-    requireAdmin,
+    requireAdmin(),
     async (_req: Request, res: Response, next: NextFunction) => {
       try {
         const [reconResult, resolveResult] = await Promise.all([
@@ -135,7 +129,7 @@ export function createLedgerReconciliationRouter() {
   /** POST /api/admin/ledger-reconciliation/ledger-events — ingest an internal ledger event */
   router.post(
     '/ledger-events',
-    requireAdmin,
+    requireAdmin(),
     validate(ingestLedgerSchema, 'body'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
@@ -155,7 +149,7 @@ export function createLedgerReconciliationRouter() {
   /** POST /api/admin/ledger-reconciliation/provider-events — ingest a provider settlement event */
   router.post(
     '/provider-events',
-    requireAdmin,
+    requireAdmin(),
     validate(ingestProviderSchema, 'body'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {

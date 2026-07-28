@@ -1,17 +1,12 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { getPool } from '../db.js'
 import { env } from '../schemas/env.js'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { generateId } from '../utils/tokens.js'
 import { logger } from '../utils/logger.js'
 
-function requireAdmin(req: Request) {
-  const headerSecret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-  }
-}
 
 /**
  * Admin tools for dead-letter queue replay (settlement outbox).
@@ -24,7 +19,7 @@ export function createSettlementAdminRouter() {
     '/settlement-dlq/:id/replay',
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const pool = await getPool()
         if (!pool) {
           return res.status(501).json({ error: { message: 'Database required for DLQ replay' } })
@@ -81,7 +76,7 @@ export function createSettlementAdminRouter() {
     '/settlement-dlq',
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const pool = await getPool()
         if (!pool) {
           return res.json({ items: [] })

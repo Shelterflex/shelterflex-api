@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { env } from '../schemas/env.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { employerStore } from '../models/employerStore.js'
@@ -15,19 +16,12 @@ import {
 } from '../middleware/employerApiKey.js'
 import { processEmployerDeductionNotification } from '../services/salaryDeductionService.js'
 
-function requireAdminSecret(req: Request): void {
-  const headerSecret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-  }
-}
 
 export function createEmployersRouter(): Router {
   const router = Router()
 
-  router.post('/admin/employers', (req: Request, res: Response, next: NextFunction) => {
+  router.post('/admin/employers', requireAdmin(), (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdminSecret(req)
       const body = createEmployerSchema.parse(req.body)
       const { employer, apiKey } = employerStore.create(body)
       res.status(201).json({ success: true, data: { employer, apiKey } })
@@ -39,9 +33,8 @@ export function createEmployersRouter(): Router {
     }
   })
 
-  router.get('/admin/employers', (req: Request, res: Response, next: NextFunction) => {
+  router.get('/admin/employers', requireAdmin(), (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdminSecret(req)
       const { status } = employerListQuerySchema.parse(req.query)
       const employers = employerStore.list(status)
       res.json({ success: true, data: employers })
@@ -53,9 +46,8 @@ export function createEmployersRouter(): Router {
     }
   })
 
-  router.patch('/admin/employers/:id/activate', (req: Request, res: Response, next: NextFunction) => {
+  router.patch('/admin/employers/:id/activate', requireAdmin(), (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdminSecret(req)
       const employer = employerStore.activate(req.params.id)
       if (!employer) {
         throw new AppError(ErrorCode.NOT_FOUND, 404, 'Employer not found')

@@ -7,6 +7,7 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { env } from '../schemas/env.js'
@@ -37,12 +38,6 @@ type LedgerQuery = z.infer<typeof ledgerQuerySchema>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function requireAdmin(req: Request): void {
-  const secret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && secret !== env.MANUAL_ADMIN_SECRET) {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-  }
-}
 
 function buildWhereClause(
   q: LedgerQuery,
@@ -122,7 +117,7 @@ export function createAdminTransactionLedgerRouter() {
     validate(ledgerQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const q = req.query as unknown as LedgerQuery
         const { rows, hasNextPage } = await queryLedger(q)
         const nextCursor = hasNextPage
@@ -141,7 +136,7 @@ export function createAdminTransactionLedgerRouter() {
     validate(ledgerQuerySchema.omit({ cursor: true, limit: true, sortBy: true, sortDir: true }), 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         // For CSV export, fetch all matching rows (cap at 100k to avoid OOM)
         const q: LedgerQuery = {
           ...(req.query as unknown as LedgerQuery),

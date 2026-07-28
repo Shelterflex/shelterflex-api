@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { validate } from '../middleware/validate.js'
 import {
   createInspectorProfileSchema,
@@ -27,11 +28,6 @@ function assertInspector(req: AuthenticatedRequest) {
   }
 }
 
-function assertAdmin(req: AuthenticatedRequest) {
-  if (req.user?.role !== 'admin') {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only admins can access this resource')
-  }
-}
 
 const router = Router()
 
@@ -167,10 +163,10 @@ router.get('/inspector/earnings', authenticateToken, async (req: AuthenticatedRe
 router.patch(
   '/admin/inspections/:inspectionId/review',
   authenticateToken,
+  requireAdmin({ mode: 'session' }),
   validate(reviewInspectionSchema, 'body'),
   async (req: AuthenticatedRequest, res, next) => {
     try {
-      assertAdmin(req)
 
       const result = await propertyInspectionService.reviewInspection(
         req.params.inspectionId,

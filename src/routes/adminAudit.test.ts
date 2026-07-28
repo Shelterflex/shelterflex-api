@@ -43,6 +43,8 @@ function buildApp() {
   app.use(express.json())
   app.use((req: any, _res: any, next: any) => {
     req.requestId = 'test-request-id'
+    // Add admin secret header to bypass requireAdmin middleware in tests
+    req.headers['x-admin-secret'] = 'test-secret-123'
     next()
   })
   app.use('/api/admin', createAdminAuditRouter())

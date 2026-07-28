@@ -9,6 +9,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { sha256Hex } from '../utils/sha256.js'
 import { z } from 'zod'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { env } from '../schemas/env.js'
@@ -25,12 +26,6 @@ const MAX_CONCURRENT_SESSIONS = parseInt(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function requireAdmin(req: Request): void {
-  const secret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && secret !== env.MANUAL_ADMIN_SECRET) {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-  }
-}
 
 function hashIp(ip: string | undefined): string | null {
   if (!ip) return null
@@ -157,7 +152,7 @@ export function createAdminSessionsRouter() {
     '/:userId',
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const sessions = await listActiveSessions(req.params.userId)
         res.json({ data: sessions, count: sessions.length })
       } catch (err) {
@@ -171,7 +166,7 @@ export function createAdminSessionsRouter() {
     '/:userId/force-logout',
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const count = await forcedLogoutAll(req.params.userId)
         logger.warn('Admin forced logout executed', {
           targetUserId: req.params.userId,
@@ -190,7 +185,7 @@ export function createAdminSessionsRouter() {
     '/:sessionId',
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         const ok = await revokeSession(req.params.sessionId)
         if (!ok) {
           throw new AppError(ErrorCode.NOT_FOUND, 404, 'Session not found or already revoked')
