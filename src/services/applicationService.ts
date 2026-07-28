@@ -84,6 +84,7 @@ export class ApplicationService {
       payload: {
         type: "ApplicationSubmitted",
         tenantId: input.tenantId,
+        landlordId: input.landlordId,
         listingId: input.listingId,
         applicationId: application.id,
       },
