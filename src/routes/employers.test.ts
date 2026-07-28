@@ -6,13 +6,18 @@ import { dealStore } from '../models/dealStore.js'
 import { DealStatus } from '../models/deal.js'
 import { applyDealRepaymentMethod } from '../services/salaryDeductionService.js'
 
+// Mock requireAdmin to bypass authorization in tests
+vi.mock('../middleware/requireAdmin.js', () => ({
+  requireAdmin: () => (_req: any, _res: any, next: any) => next(),
+  assertAdminAuth: () => {},
+}))
+
 const ADMIN_SECRET = 'test-admin-secret-for-employers'
 
 describe('Employers API', () => {
   let app: ReturnType<typeof createApp>
 
   beforeEach(async () => {
-    process.env.MANUAL_ADMIN_SECRET = ADMIN_SECRET
     await employerStore.clear()
     await dealStore.clear()
     app = createApp()

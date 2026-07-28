@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { inspectorService } from '../services/inspectorService.js'
 import { SorobanAdapter } from '../soroban/adapter.js'
 import { InspectorBondService } from '../services/inspectorBondService.js'
@@ -14,11 +15,6 @@ function assertInspector(req: AuthenticatedRequest) {
   }
 }
 
-function assertAdmin(req: AuthenticatedRequest) {
-  if (req.user?.role !== 'admin') {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only admins can access this resource')
-  }
-}
 
 // Inspector-facing router — mounted at /api/inspector
 export function createInspectorJobsRouter(adapter: SorobanAdapter): Router {
@@ -117,9 +113,8 @@ export function createInspectorJobsRouter(adapter: SorobanAdapter): Router {
 export function createAdminInspectorJobsRouter(): Router {
   const router = Router()
 
-  router.get('/jobs', authenticateToken, async (req: AuthenticatedRequest, res, next) => {
+  router.get('/jobs', authenticateToken, requireAdmin({ mode: 'session' }), async (req: AuthenticatedRequest, res, next) => {
     try {
-      assertAdmin(req)
       const jobs = await inspectorService.listAllJobs()
       res.json({ success: true, data: jobs })
     } catch (error) {
@@ -127,9 +122,8 @@ export function createAdminInspectorJobsRouter(): Router {
     }
   })
 
-  router.post('/jobs', authenticateToken, async (req: AuthenticatedRequest, res, next) => {
+  router.post('/jobs', authenticateToken, requireAdmin({ mode: 'session' }), async (req: AuthenticatedRequest, res, next) => {
     try {
-      assertAdmin(req)
       const { listingId, offeredFeeNgn } = req.body
       if (!listingId || !offeredFeeNgn) {
         throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'listingId and offeredFeeNgn are required')
@@ -146,9 +140,8 @@ export function createAdminInspectorJobsRouter(): Router {
     }
   })
 
-  router.post('/jobs/:id/approve', authenticateToken, async (req: AuthenticatedRequest, res, next) => {
+  router.post('/jobs/:id/approve', authenticateToken, requireAdmin({ mode: 'session' }), async (req: AuthenticatedRequest, res, next) => {
     try {
-      assertAdmin(req)
       const job = await inspectorService.approveReport(req.params.id)
       auditLog('INSPECTOR_REPORT_APPROVED' as any, extractAuditContext(req, 'admin'), {
         jobId: job.id,
@@ -161,9 +154,8 @@ export function createAdminInspectorJobsRouter(): Router {
     }
   })
 
-  router.post('/jobs/:id/reject', authenticateToken, async (req: AuthenticatedRequest, res, next) => {
+  router.post('/jobs/:id/reject', authenticateToken, requireAdmin({ mode: 'session' }), async (req: AuthenticatedRequest, res, next) => {
     try {
-      assertAdmin(req)
       const { reason } = req.body
       if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
         throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'Rejection reason is required')

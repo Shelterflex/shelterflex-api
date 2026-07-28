@@ -31,9 +31,9 @@ router.post(
         throw new AppError(ErrorCode.NOT_FOUND, 404, 'Deal not found')
       }
 
-      // Only admin or system can generate leases
-      if (req.user?.role !== 'admin' && req.user?.role !== 'landlord') {
-        throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only admins or landlords can generate leases')
+      // Only landlord can generate leases for their deals
+      if (req.user?.role !== 'landlord') {
+        throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can generate leases')
       }
 
       const templateData = buildLeaseTemplateData(deal, deal.listingId || 'Property')

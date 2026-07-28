@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { env } from '../schemas/env.js'
@@ -14,12 +15,6 @@ const confirmErasureParamsSchema = z.object({
 export function createAdminErasureRouter(): Router {
   const router = Router()
 
-  function requireAdminSecret(req: Request): void {
-    const headerSecret = req.headers['x-admin-secret']
-    if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-      throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-    }
-  }
 
   /**
    * POST /api/admin/erasure/:requestId/confirm
@@ -30,7 +25,7 @@ export function createAdminErasureRouter(): Router {
     validate(confirmErasureParamsSchema, 'params'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdminSecret(req)
+        assertAdminAuth(req)
         const adminUserId = (req as any).user?.id ?? 'admin'
         const { requestId } = req.params
 

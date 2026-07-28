@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
 import { validate } from '../middleware/validate.js'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { complianceReportStore } from '../models/complianceReportStore.js'
 import { ComplianceReportService } from '../services/complianceReportService.js'
 import { generateReportSchema, reportQuerySchema } from '../schemas/complianceReport.js'
@@ -14,24 +15,15 @@ const reportService = new ComplianceReportService()
 export function createComplianceReportRouter() {
   const router = Router()
 
-  function requireComplianceRole(req: Request): AuthenticatedRequest {
-    const user = (req as any).user
-    if (!user) {
-      throw new AppError(ErrorCode.UNAUTHORIZED, 401, 'Authentication required')
-    }
-    if (user.role !== 'admin' && user.role !== 'super_admin') {
-      throw new AppError(ErrorCode.FORBIDDEN, 403, 'Compliance role required')
-    }
-    return user
-  }
 
   router.post(
     '/generate',
     authenticateToken,
+    requireAdmin({ mode: 'session' }),
     validate(generateReportSchema),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const user = requireComplianceRole(req)
+        const user = req.user
         const { reportType, format, dateFrom, dateTo, jurisdiction } =
           req.body as any
 
@@ -76,9 +68,10 @@ export function createComplianceReportRouter() {
   router.get(
     '/:reportId',
     authenticateToken,
+    requireAdmin({ mode: 'session' }),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const user = requireComplianceRole(req)
+        const user = req.user
         const { reportId } = req.params
 
         const report = complianceReportStore.findById(reportId)

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { validate } from '../middleware/validate.js'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { env } from '../schemas/env.js'
 import { ngnDepositStore } from '../models/ngnDepositStore.js'
 import { depositStore } from '../models/depositStore.js'
@@ -20,20 +21,13 @@ import { userRiskStateStore } from '../models/userRiskStateStore.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 
-function requireAdminSecret(req: Request, _res: Response, next: NextFunction) {
-  const headerSecret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-    return next(new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret'))
-  }
-  return next()
-}
 
 export function createAdminReconciliationRouter(ngnWalletService: NgnWalletService) {
   const router = Router()
 
   router.get(
     '/deposits',
-    requireAdminSecret,
+    requireAdmin(),
     validate(depositsQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
@@ -103,7 +97,7 @@ export function createAdminReconciliationRouter(ngnWalletService: NgnWalletServi
 
   router.get(
     '/wallets',
-    requireAdminSecret,
+    requireAdmin(),
     validate(walletsQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
@@ -144,7 +138,7 @@ export function createAdminReconciliationRouter(ngnWalletService: NgnWalletServi
 
   router.get(
     '/conversions',
-    requireAdminSecret,
+    requireAdmin(),
     validate(conversionsQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
@@ -186,7 +180,7 @@ export function createAdminReconciliationRouter(ngnWalletService: NgnWalletServi
 
   router.get(
     '/outbox',
-    requireAdminSecret,
+    requireAdmin(),
     validate(outboxQuerySchema, 'query'),
     async (req: Request, res: Response, next: NextFunction) => {
       try {

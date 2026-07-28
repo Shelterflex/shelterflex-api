@@ -1,18 +1,13 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { getPool } from '../db.js'
 import { env } from '../schemas/env.js'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
 import { notificationService, _getNotificationMemory } from '../services/notificationService.js'
 import { z } from 'zod'
 
-function requireAdmin(req: Request) {
-  const headerSecret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-  }
-}
 
 export function createNotificationsRouter() {
   const r = Router()
@@ -258,7 +253,7 @@ export function createNotificationsRouter() {
     '/test-seed',
     async (req, res, next) => {
       try {
-        requireAdmin(req)
+        assertAdminAuth(req)
         if (env.NODE_ENV === 'production' && !process.env.ALLOW_NOTIFICATION_TEST_SEED) {
           throw new AppError(ErrorCode.FORBIDDEN, 403, 'Disabled')
         }

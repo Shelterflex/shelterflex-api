@@ -19,6 +19,7 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { env } from '../schemas/env.js'
@@ -38,16 +39,10 @@ const auditLogsQuerySchema = z.object({
 export function createAdminAuditLogsRouter() {
   const router = Router()
 
-  function requireAdmin(req: Request): void {
-    const headerSecret = req.headers['x-admin-secret']
-    if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-      throw new AppError(ErrorCode.FORBIDDEN, 403, 'Forbidden')
-    }
-  }
 
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
+      assertAdminAuth(req)
 
       const parsed = auditLogsQuerySchema.safeParse(req.query)
       if (!parsed.success) {

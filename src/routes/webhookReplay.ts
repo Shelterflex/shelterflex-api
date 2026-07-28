@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import { z } from 'zod'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { AppError, ErrorCode } from '../errors/index.js'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
 import { extractAuditContext } from '../utils/auditLogger.js'
@@ -9,14 +10,6 @@ import { env } from '../schemas/env.js'
 
 const router = Router()
 
-// Admin check middleware
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const headerSecret = req.headers['x-admin-secret']
-  if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-  }
-  next()
-}
 
 // Validation schemas
 const replayRequestSchema = z.object({
@@ -36,7 +29,7 @@ const replayRequestSchema = z.object({
 router.post(
   '/preview',
   authenticateToken,
-  requireAdmin,
+  requireAdmin({ mode: 'session' }),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.id
@@ -71,7 +64,7 @@ router.post(
 router.post(
   '/execute',
   authenticateToken,
-  requireAdmin,
+  requireAdmin({ mode: 'session' }),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.id
@@ -104,7 +97,7 @@ router.post(
 router.get(
   '/history',
   authenticateToken,
-  requireAdmin,
+  requireAdmin({ mode: 'session' }),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.id
@@ -134,7 +127,7 @@ router.get(
 router.get(
   '/events/:id',
   authenticateToken,
-  requireAdmin,
+  requireAdmin({ mode: 'session' }),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.id

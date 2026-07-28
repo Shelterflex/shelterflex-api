@@ -36,7 +36,7 @@ import { rewardStore } from "../models/rewardStore.js";
 import { RewardStatus } from "../models/reward.js";
 import { listingStore } from "../models/listingStore.js";
 import { ListingStatus } from "../models/listing.js";
-import { env } from "../schemas/env.js";
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import type { WalletStore } from "../models/wallet.js";
 import type { EncryptionService } from "../services/walletService.js";
 import { ReceiptIndexer } from "../indexer/worker.js";
@@ -53,13 +53,6 @@ export function createAdminRouter(
   const router = Router();
   const sender = new OutboxSender(adapter);
 
-  // Admin auth guard helper
-  function requireAdminSecret(req: Request) {
-    const headerSecret = req.headers["x-admin-secret"];
-    if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-      throw new AppError(ErrorCode.FORBIDDEN, 403, "Invalid admin secret");
-    }
-  }
 
   /**
    * GET /api/admin/flags
@@ -67,7 +60,7 @@ export function createAdminRouter(
    */
   router.get(
     "/flags",
-    requireAdminSecret,
+    requireAdmin(),
     (req: Request, res: Response, next: NextFunction) => {
       try {
         res.json({
@@ -95,13 +88,7 @@ export function createAdminRouter(
           );
         }
 
-        const headerSecret = req.headers["x-admin-secret"];
-        if (
-          env.MANUAL_ADMIN_SECRET &&
-          headerSecret !== env.MANUAL_ADMIN_SECRET
-        ) {
-          throw new AppError(ErrorCode.FORBIDDEN, 403, "Invalid admin secret");
-        }
+        assertAdminAuth(req);
 
         const fromKeyId =
           typeof req.body.fromKeyId === "string"
@@ -248,7 +235,7 @@ export function createAdminRouter(
    */
   router.get(
     "/outbox/health",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const summary = await outboxStore.getHealthSummary();
@@ -276,7 +263,7 @@ export function createAdminRouter(
    */
   router.get(
     "/outbox/dead-letter",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 100;
@@ -302,7 +289,7 @@ export function createAdminRouter(
    */
   router.get(
     "/outbox",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { status, limit } = req.query;
@@ -368,7 +355,7 @@ export function createAdminRouter(
    */
   router.post(
     "/outbox/:id/mark-dead",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { id } = req.params;
@@ -441,7 +428,7 @@ export function createAdminRouter(
    */
   router.post(
     "/outbox/:id/retry",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { id } = req.params;
@@ -501,7 +488,7 @@ export function createAdminRouter(
    */
   router.post(
     "/outbox/retry-all",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         logger.info("Retry all failed items requested", {
@@ -882,7 +869,7 @@ export function createAdminRouter(
     "/indexer/metrics",
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdminSecret(req);
+        assertAdminAuth(req);
 
         if (!indexer) {
           throw new AppError(
@@ -917,7 +904,7 @@ export function createAdminRouter(
     "/indexer/pause",
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdminSecret(req);
+        assertAdminAuth(req);
 
         if (!indexer) {
           throw new AppError(
@@ -966,7 +953,7 @@ export function createAdminRouter(
     "/indexer/resume",
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        requireAdminSecret(req);
+        assertAdminAuth(req);
 
         if (!indexer) {
           throw new AppError(
@@ -1015,7 +1002,7 @@ export function createAdminRouter(
    */
   router.post(
     "/kyc/bulk",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { action, ids, reason } = req.body as {
@@ -1183,7 +1170,7 @@ export function createAdminRouter(
    */
   router.post(
     "/disputes/bulk",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { action, ids, resolution } = req.body as {
@@ -1325,7 +1312,7 @@ export function createAdminRouter(
    */
   router.post(
     "/listings/bulk",
-    requireAdminSecret,
+    requireAdmin(),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { action, ids } = req.body as {

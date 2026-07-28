@@ -7,6 +7,7 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
+import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { env } from '../schemas/env.js'
@@ -31,12 +32,6 @@ const verifyQuerySchema = z.object({
 export function createAdminAuditRouter() {
   const router = Router()
 
-  function requireAdminSecret(req: Request): void {
-    const headerSecret = req.headers['x-admin-secret']
-    if (env.MANUAL_ADMIN_SECRET && headerSecret !== env.MANUAL_ADMIN_SECRET) {
-      throw new AppError(ErrorCode.FORBIDDEN, 403, 'Invalid admin secret')
-    }
-  }
 
   /**
    * GET /api/admin/audit
@@ -53,7 +48,7 @@ export function createAdminAuditRouter() {
    */
   router.get('/audit', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdminSecret(req)
+      assertAdminAuth(req)
 
       const parsed = auditSearchQuerySchema.safeParse(req.query)
       if (!parsed.success) {
@@ -111,7 +106,7 @@ export function createAdminAuditRouter() {
    */
   router.get('/audit/verify', async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdminSecret(req)
+      assertAdminAuth(req)
 
       const parsed = verifyQuerySchema.safeParse(req.query)
       if (!parsed.success) {

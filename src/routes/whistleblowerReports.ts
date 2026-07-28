@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { validate } from '../middleware/validate.js'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import {
@@ -71,11 +72,9 @@ export function createWhistleblowerReportsRouter(): Router {
   router.get(
     '/admin/reports',
     authenticateToken,
+    requireAdmin({ mode: 'session' }),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        if (req.user?.role !== 'admin') {
-          throw new AppError(ErrorCode.FORBIDDEN, 403, 'Admin access required')
-        }
 
         const parseResult = listReportsQuerySchema.safeParse(req.query)
         if (!parseResult.success) {

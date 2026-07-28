@@ -41,15 +41,15 @@ export function createRentGuaranteeRouter(provider: RentGuaranteeProvider): Rout
     return p
   }
 
-  function assertLandlordOrAdmin(req: AuthenticatedRequest) {
-    if (req.user?.role !== 'landlord' && req.user?.role !== 'admin') {
+  function assertLandlord(req: AuthenticatedRequest) {
+    if (req.user?.role !== 'landlord') {
       throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can access this resource')
     }
   }
 
   router.get('/deals/:dealId/insurance/quote', authenticateToken, async (req: AuthenticatedRequest, res, next) => {
     try {
-      assertLandlordOrAdmin(req)
+      assertLandlord(req)
       const { dealId } = req.params
       const coverageTermMonths = parseInt(req.query.coverageTermMonths as string, 10) || 12
 
@@ -67,7 +67,7 @@ export function createRentGuaranteeRouter(provider: RentGuaranteeProvider): Rout
 
   router.post('/deals/:dealId/insurance/purchase', authenticateToken, idempotency(), async (req: AuthenticatedRequest, res, next) => {
     try {
-      assertLandlordOrAdmin(req)
+      assertLandlord(req)
       const { dealId } = req.params
       const { quoteId } = req.body
 
