@@ -17,7 +17,7 @@ export function requirePermission(resource: string, action: string) {
           return next()
         }
         const requiredPermission = `${resource}:${action}`
-        if ((req as any).permissions && (req as any).permissions.includes(requiredPermission)) {
+        if ((req as any).permissions?.includes(requiredPermission)) {
           return next()
         }
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Forbidden')

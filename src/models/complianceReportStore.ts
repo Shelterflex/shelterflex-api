@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { auditLog, type AuditContext } from '../utils/auditLogger.js'
 
 export type ComplianceReportType = 'transaction' | 'kyc' | 'ACTIVE_DEALS_REPORT' | 'DEFAULTED_DEALS_REPORT' | 'KYC_STATUS_REPORT' | 'TRANSACTION_VOLUME_REPORT' | 'LATE_FEE_REVENUE_REPORT'
 

@@ -29,8 +29,8 @@ export interface JobStore {
 // ---------------------------------------------------------------------------
 
 export class InMemoryJobStore implements JobStore {
-  private jobs = new Map<string, ScheduledJob>()
-  private runHistory = new Map<string, JobRunHistory>()
+  private readonly jobs = new Map<string, ScheduledJob>()
+  private readonly runHistory = new Map<string, JobRunHistory>()
 
   async create(input: CreateJobInput): Promise<ScheduledJob> {
     const job: ScheduledJob = {
