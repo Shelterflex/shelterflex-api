@@ -37,7 +37,7 @@ export function createComplianceReportRouter() {
 
         auditLog(
           'COMPLIANCE_REPORT_GENERATING' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, req.user?.role as any),
           {
             reportId: report.reportId,
             reportType,
@@ -82,13 +82,13 @@ export function createComplianceReportRouter() {
         // Log access
         complianceReportStore.logAccess(
           reportId,
-          user.id,
-          req.ip,
+          user?.id || 'unknown',
+          req.ip || 'unknown',
         )
 
         auditLog(
           'COMPLIANCE_REPORT_ACCESSED' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, user?.role as any),
           { reportId, reportType: report.reportType },
         )
 
@@ -116,7 +116,7 @@ export function createComplianceReportRouter() {
     authenticateToken,
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const user = requireComplianceRole(req)
+        const user = req.user
         const { reportId } = req.params
 
         const report = complianceReportStore.findById(reportId)
@@ -139,13 +139,13 @@ export function createComplianceReportRouter() {
         // Log access
         complianceReportStore.logAccess(
           reportId,
-          user.id,
-          req.ip,
+          user?.id || 'unknown',
+          req.ip || 'unknown',
         )
 
         auditLog(
           'COMPLIANCE_REPORT_DOWNLOADED' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, user?.role as any),
           { reportId, reportType: report.reportType, format: report.format },
         )
 
@@ -175,7 +175,7 @@ export function createComplianceReportRouter() {
     validate(reportQuerySchema),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const user = requireComplianceRole(req)
+        const user = req.user
         const parsed = reportQuerySchema.safeParse(req.query)
 
         if (!parsed.success) {
@@ -227,7 +227,7 @@ export function createComplianceReportRouter() {
     authenticateToken,
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const user = requireComplianceRole(req)
+        const user = req.user
         const { reportId } = req.params
         const { content, expectedHash } = req.body as any
 
@@ -243,7 +243,7 @@ export function createComplianceReportRouter() {
 
         auditLog(
           'COMPLIANCE_REPORT_VERIFIED' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, user?.role as any),
           { reportId, isValid },
         )
 

@@ -84,6 +84,7 @@ export type AuditEventType =
   | 'KYC_SUBMITTED'
   | 'KYC_APPROVED'
   | 'KYC_REJECTED'
+  | 'LANDLORD_VERIFICATION_UPDATED'
   // Disputes
   | 'DISPUTE_CREATED'
   | 'DISPUTE_RESOLVED'

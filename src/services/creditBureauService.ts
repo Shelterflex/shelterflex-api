@@ -38,6 +38,7 @@ export class CreditBureauService {
     } catch (error) {
       logger.error(
         `Failed to pull credit report for tenant ${tenantId}:`,
+        undefined,
         error,
       );
       throw new AppError(

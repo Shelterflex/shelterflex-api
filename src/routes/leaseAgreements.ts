@@ -2,7 +2,7 @@
  * Lease Agreement routes
  */
 
-import { Router, Response } from 'express'
+import { Router, Response, Request } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
 import { leaseAgreementStore } from '../models/leaseAgreementStore.js'
 import { LeaseStatus } from '../models/leaseAgreement.js'
@@ -242,7 +242,7 @@ router.post(
   '/webhooks/esignature/stub',
   async (req: Request, res: Response, next) => {
     try {
-      const { token, signer, requestId } = req.query as {
+      const { token, signer, requestId } = (req as any).query as {
         token: string
         signer: string
         requestId: string

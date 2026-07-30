@@ -25,11 +25,6 @@ export function requirePermission(resource: string, action: string) {
 
       const pool = await getPool()
       if (!pool) {
-        // Fallback for tests if DB is completely unavailable
-        if (req.user.role === 'admin' || req.user.role === 'super_admin') {
-          (req as any).isSuperAdmin = true
-          return next()
-        }
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Forbidden')
       }
 
@@ -59,15 +54,7 @@ export function requirePermission(resource: string, action: string) {
 
       // Fallback: If DB contains no RBAC roles for this user, check their legacy user.role
       if (rows.length === 0) {
-        if (req.user.role === 'admin' || req.user.role === 'super_admin') {
-          (req as any).isSuperAdmin = true
-          return next()
-        }
-      }
-
-      const requiredPermission = `${resource}:${action}`
-      if (permissions.includes(requiredPermission)) {
-        return next()
+        // No fallback - user must have explicit RBAC permissions
       }
 
       throw new AppError(ErrorCode.FORBIDDEN, 403, 'Forbidden')

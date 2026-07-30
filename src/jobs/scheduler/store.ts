@@ -493,6 +493,7 @@ export class PostgresJobStore implements JobStore {
       errorMessage: (row.error_message as string | null) ?? null,
       payload: (row.payload as Record<string, unknown>) ?? {},
       createdAt: new Date(row.created_at as string),
+      fencingToken: (row.fencing_token as number | null) ?? null,
     }))
   }
 }

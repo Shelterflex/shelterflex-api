@@ -40,7 +40,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
   async create(
     input: CreateListingApplicationInput,
   ): Promise<ListingApplication> {
-    const pool = getPool();
+    const pool = await getPool();
     const id = randomUUID();
     const now = new Date();
 
@@ -53,7 +53,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
                 payment_plan, applied_at, reviewed_at, reviewed_by, reviewer_notes, created_at, updated_at
     `;
 
-    const result = await pool.query(query, [
+    const result = await pool!.query(query, [
       id,
       input.listingId,
       input.tenantId,
@@ -71,7 +71,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
   }
 
   async findById(id: string): Promise<ListingApplication | null> {
-    const pool = getPool();
+    const pool = await getPool();
 
     const query = `
       SELECT id, listing_id, tenant_id, landlord_id, status, cover_note, preferred_start_date,
@@ -80,7 +80,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
       WHERE id = $1
     `;
 
-    const result = await pool.query(query, [id]);
+    const result = await pool!.query(query, [id]);
     return result.rows.length > 0 ? this.mapRow(result.rows[0]) : null;
   }
 
@@ -88,7 +88,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
     tenantId: string,
     filters?: { status?: ListingApplicationStatus },
   ): Promise<ListingApplication[]> {
-    const pool = getPool();
+    const pool = await getPool();
 
     let query = `
       SELECT id, listing_id, tenant_id, landlord_id, status, cover_note, preferred_start_date,
@@ -106,7 +106,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
 
     query += ` ORDER BY applied_at DESC`;
 
-    const result = await pool.query(query, params);
+    const result = await pool!.query(query, params);
     return result.rows.map((row) => this.mapRow(row));
   }
 
@@ -114,7 +114,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
     listingId: string,
     filters?: { status?: ListingApplicationStatus },
   ): Promise<ListingApplication[]> {
-    const pool = getPool();
+    const pool = await getPool();
 
     let query = `
       SELECT id, listing_id, tenant_id, landlord_id, status, cover_note, preferred_start_date,
@@ -132,7 +132,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
 
     query += ` ORDER BY applied_at DESC`;
 
-    const result = await pool.query(query, params);
+    const result = await pool!.query(query, params);
     return result.rows.map((row) => this.mapRow(row));
   }
 
@@ -140,7 +140,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
     tenantId: string,
     listingId: string,
   ): Promise<ListingApplication | null> {
-    const pool = getPool();
+    const pool = await getPool();
 
     const query = `
       SELECT id, listing_id, tenant_id, landlord_id, status, cover_note, preferred_start_date,
@@ -151,7 +151,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
       LIMIT 1
     `;
 
-    const result = await pool.query(query, [
+    const result = await pool!.query(query, [
       tenantId,
       listingId,
       ListingApplicationStatus.REJECTED,
@@ -165,7 +165,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
     reviewedBy?: string,
     reviewerNotes?: string,
   ): Promise<ListingApplication | null> {
-    const pool = getPool();
+    const pool = await getPool();
     const now = new Date();
 
     const query = `
@@ -176,7 +176,7 @@ class PostgresListingApplicationRepository implements IListingApplicationReposit
                 payment_plan, applied_at, reviewed_at, reviewed_by, reviewer_notes, created_at, updated_at
     `;
 
-    const result = await pool.query(query, [
+    const result = await pool!.query(query, [
       id,
       status,
       now,

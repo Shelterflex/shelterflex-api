@@ -52,7 +52,7 @@ export function createTenantCreditScoringRouter() {
 
         auditLog(
           'TENANT_CREDIT_SCORED' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, req.user?.role as any),
           {
             tenantId,
             score: record.computedScore,
@@ -93,7 +93,7 @@ export function createTenantCreditScoringRouter() {
 
         auditLog(
           'TENANT_CREDIT_SCORE_ACCESSED' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, req.user?.role as any),
           { tenantId, recordId: record.id },
         )
 
@@ -128,18 +128,18 @@ export function createTenantCreditScoringRouter() {
           tenantId,
           manualScore,
           reason,
-          user.id,
+          req.user?.id || 'unknown',
         )
 
         auditLog(
           'TENANT_CREDIT_OVERRIDE' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, req.user?.role as any),
           {
             tenantId,
             recordId: record.id,
             manualScore,
             reason,
-            overriddenBy: user.id,
+            overriddenBy: req.user?.id || 'unknown',
           },
         )
 
@@ -185,7 +185,7 @@ export function createTenantCreditScoringRouter() {
 
         auditLog(
           'TENANT_CREDIT_CONFIG_UPDATED' as any,
-          extractAuditContext(req, user.role as any),
+          extractAuditContext(req, req.user?.role as any),
           { factorWeights, riskBandThresholds },
         )
 

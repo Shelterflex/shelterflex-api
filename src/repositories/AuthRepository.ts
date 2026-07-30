@@ -183,8 +183,8 @@ export class PostgresUserRepository {
       planQuota: row.plan_quota,
       displayCurrency: row.display_currency,
     }
-    await userCache.delete(`email:${email.toLowerCase()}`)
-    await userCache.delete(`id:${user.id}`)
+    await userCache.invalidate(`email:${email.toLowerCase()}`)
+    await userCache.invalidate(`id:${user.id}`)
     return user
   }
 

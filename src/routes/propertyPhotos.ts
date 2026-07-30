@@ -115,7 +115,7 @@ router.post(
     try {
       const files = (req.files as Express.Multer.File[]) || []
       if (files.length === 0) {
-        throw new AppError(ErrorCode.BAD_REQUEST, 400, 'No photo files provided')
+        throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'No photo files provided')
       }
 
       const property = await landlordPropertyStore.getById(req.params.propertyId)
