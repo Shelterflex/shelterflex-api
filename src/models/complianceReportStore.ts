@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { appEventEmitter } from '../utils/eventEmitter.js'
-import { auditLog, type AuditContext } from '../utils/auditLogger.js'
 
 export type ComplianceReportType = 'transaction' | 'kyc' | 'ACTIVE_DEALS_REPORT' | 'DEFAULTED_DEALS_REPORT' | 'KYC_STATUS_REPORT' | 'TRANSACTION_VOLUME_REPORT' | 'LATE_FEE_REVENUE_REPORT'
 
@@ -89,7 +87,7 @@ class ComplianceReportStore {
   }
 
   search(filters: {
-    reportType?: 'transaction' | 'kyc'
+    reportType?: ComplianceReportType
     status?: 'pending' | 'completed' | 'failed'
     dateFrom?: Date
     dateTo?: Date

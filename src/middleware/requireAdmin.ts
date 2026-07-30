@@ -77,8 +77,7 @@ export function requireAdmin(options: RequireAdminOptions = {}) {
         if (hasSession) {
           // Check if user has admin role
           const isAdminRole =
-            req.user.role === 'admin' ||
-            req.user.role === 'super_admin' ||
+            req.user?.role === 'admin' ||
             (req.user as any).isAdmin === true
 
           if (!isAdminRole) {

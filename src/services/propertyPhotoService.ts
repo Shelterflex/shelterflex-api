@@ -4,7 +4,7 @@ import { propertyPhotoStore } from '../models/propertyPhotoStore.js'
 import type { PropertyPhoto } from '../models/propertyPhoto.js'
 
 export class PropertyPhotoService {
-  async uploadPropertyPhotos(propertyId: string, files: express.Multer.File[]): Promise<PropertyPhoto[]> {
+  async uploadPropertyPhotos(propertyId: string, files: any[]): Promise<PropertyPhoto[]> {
     const uploadedPhotos: PropertyPhoto[] = []
 
     for (const file of files) {

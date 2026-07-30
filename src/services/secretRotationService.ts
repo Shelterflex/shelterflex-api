@@ -279,7 +279,7 @@ export class SecretRotationService extends EventEmitter {
         });
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.error(`Auto-rotation failed for ${name}:`, error);
+        logger.error(`Auto-rotation failed for ${name}:`, undefined, error);
         logger.error(`ALERT: Auto-rotation failure for secret slot ${name}`);
         this.emit('rotationFailure', { secretName: name, error: errorMsg });
       } finally {

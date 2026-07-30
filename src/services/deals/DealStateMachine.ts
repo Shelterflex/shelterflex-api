@@ -6,7 +6,7 @@
 import { DealStatus } from "../../models/deal.js";
 import { AppError } from "../../errors/AppError.js";
 import { ErrorCode } from "../../errors/errorCodes.js";
-import { auditLog } from "../../repositories/AuditRepository.js";
+import { auditLog } from "../../utils/auditLogger.js";
 import { outboxStore } from "../../outbox/index.js";
 import { TxType } from "../../outbox/types.js";
 import { logger } from "../../utils/logger.js";
@@ -78,17 +78,15 @@ export class DealStateMachine {
     );
 
     // Audit log
-    await auditLog({
-      actor,
-      action: `DEAL_STATUS_CHANGED_${targetStatus}`,
-      resourceType: "deal",
-      resourceId: dealId,
-      details: {
+    auditLog(
+      `DEAL_STATUS_CHANGED_${targetStatus}` as any,
+      { actor, resourceType: "deal", resourceId: dealId } as any,
+      {
         from: currentStatus,
         to: targetStatus,
         reason,
-      },
-    });
+      }
+    );
 
     return targetStatus;
   }

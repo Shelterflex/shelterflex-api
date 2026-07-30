@@ -28,7 +28,7 @@ try {
   console.warn('[docs] swagger-ui-express not available, docs UI disabled')
 }
 
-const uiOptions: SwaggerUiModule['SwaggerUiOptions'] = {
+const uiOptions: any = {
   customSiteTitle: 'ShelterFlex API Docs',
   swaggerOptions: {
     persistAuthorization: true,

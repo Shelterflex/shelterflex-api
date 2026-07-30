@@ -56,7 +56,7 @@ export function publicTenantRatingRateLimit(options?: {
       if (error instanceof AppError) {
         return next(error)
       }
-      logger.error('Public tenant rating rate limiting error:', error)
+      logger.error('Public tenant rating rate limiting error:', undefined, error)
       // On error, allow the request to avoid blocking legitimate users
       next()
     }

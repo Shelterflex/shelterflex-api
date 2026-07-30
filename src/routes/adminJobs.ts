@@ -56,9 +56,8 @@ export function createAdminJobsRouter() {
    * GET /api/admin/jobs/:id
    * Get a single job by ID.
    */
-  router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/:id', requireAdmin(), async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
       const job = await getJobStore().findById(req.params.id)
       if (!job) throw new AppError(ErrorCode.NOT_FOUND, 404, `Job ${req.params.id} not found`)
       res.json({ job })
@@ -113,9 +112,8 @@ export function createAdminJobsRouter() {
    * POST /api/admin/jobs/:id/cancel
    * Cancel a pending or failed job so it will not run again.
    */
-  router.post('/:id/cancel', async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/:id/cancel', requireAdmin(), async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
       const store = getJobStore()
       const job = await store.findById(req.params.id)
       if (!job) throw new AppError(ErrorCode.NOT_FOUND, 404, `Job ${req.params.id} not found`)
@@ -130,9 +128,8 @@ export function createAdminJobsRouter() {
    * GET /api/admin/jobs/:id/history
    * Get job run history for a specific job.
    */
-  router.get('/:id/history', async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/:id/history', requireAdmin(), async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
       const store = getJobStore()
       const job = await store.findById(req.params.id)
       if (!job) throw new AppError(ErrorCode.NOT_FOUND, 404, `Job ${req.params.id} not found`)
@@ -148,9 +145,8 @@ export function createAdminJobsRouter() {
    * POST /api/admin/jobs/:id/trigger
    * Manually trigger a job to run immediately (respects lease semantics).
    */
-  router.post('/:id/trigger', async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/:id/trigger', requireAdmin(), async (req: Request, res: Response, next: NextFunction) => {
     try {
-      requireAdmin(req)
       const store = getJobStore()
       const job = await store.findById(req.params.id)
       if (!job) throw new AppError(ErrorCode.NOT_FOUND, 404, `Job ${req.params.id} not found`)

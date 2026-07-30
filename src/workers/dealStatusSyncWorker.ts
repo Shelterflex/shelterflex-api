@@ -64,7 +64,7 @@ export class DealStatusSyncWorker {
 
     for (const item of items) {
       if (item.status === OutboxStatus.FAILED && !shouldRetry(item)) {
-        if (item.retryCount >= MAX_DEAL_SYNC_RETRIES && item.status !== OutboxStatus.DEAD) {
+        if (item.retryCount >= MAX_DEAL_SYNC_RETRIES) {
           await outboxStore.markDead(item.id, 'Max deal sync retry count reached')
           logger.error('Deal status sync dead-lettered', {
             outboxId: item.id,

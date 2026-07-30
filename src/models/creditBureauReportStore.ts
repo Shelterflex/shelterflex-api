@@ -26,7 +26,7 @@ class PostgresCreditBureauReportStore implements ICreditBureauReportStore {
   async create(
     input: CreateCreditBureauReportInput,
   ): Promise<CreditBureauReportRecord> {
-    const pool = getPool();
+    const pool = await getPool();
     const id = randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days TTL
@@ -38,7 +38,7 @@ class PostgresCreditBureauReportStore implements ICreditBureauReportStore {
       RETURNING id, tenant_id, bvn, nin, report, cached_at, expires_at, created_at, updated_at
     `;
 
-    const result = await pool.query(query, [
+    const result = await pool!.query(query, [
       id,
       input.tenantId,
       input.bvn,
@@ -56,7 +56,7 @@ class PostgresCreditBureauReportStore implements ICreditBureauReportStore {
   async findLatestByTenantId(
     tenantId: string,
   ): Promise<CreditBureauReportRecord | null> {
-    const pool = getPool();
+    const pool = await getPool();
     const now = new Date();
 
     const query = `
@@ -67,12 +67,12 @@ class PostgresCreditBureauReportStore implements ICreditBureauReportStore {
       LIMIT 1
     `;
 
-    const result = await pool.query(query, [tenantId, now]);
+    const result = await pool!.query(query, [tenantId, now]);
     return result.rows.length > 0 ? this.mapRow(result.rows[0]) : null;
   }
 
   async findById(id: string): Promise<CreditBureauReportRecord | null> {
-    const pool = getPool();
+    const pool = await getPool();
 
     const query = `
       SELECT id, tenant_id, bvn, nin, report, cached_at, expires_at, created_at, updated_at
@@ -80,12 +80,12 @@ class PostgresCreditBureauReportStore implements ICreditBureauReportStore {
       WHERE id = $1
     `;
 
-    const result = await pool.query(query, [id]);
+    const result = await pool!.query(query, [id]);
     return result.rows.length > 0 ? this.mapRow(result.rows[0]) : null;
   }
 
   async deleteExpired(): Promise<number> {
-    const pool = getPool();
+    const pool = await getPool();
     const now = new Date();
 
     const query = `
@@ -93,7 +93,7 @@ class PostgresCreditBureauReportStore implements ICreditBureauReportStore {
       WHERE expires_at < $1
     `;
 
-    const result = await pool.query(query, [now]);
+    const result = await pool!.query(query, [now]);
     logger.info(`Deleted ${result.rowCount} expired credit bureau reports`);
     return result.rowCount || 0;
   }

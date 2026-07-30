@@ -64,11 +64,11 @@ export function createAdminRouter(
     (req: Request, res: Response, next: NextFunction) => {
       try {
         res.json({
-          custodialModeEnabled: env.CUSTODIAL_MODE_ENABLED,
-          custodialSigningPaused: env.CUSTODIAL_SIGNING_PAUSED,
-          webhookSignatureEnabled: env.WEBHOOK_SIGNATURE_ENABLED,
+          custodialModeEnabled: process.env.CUSTODIAL_MODE_ENABLED === 'true',
+          custodialSigningPaused: process.env.CUSTODIAL_SIGNING_PAUSED === 'true',
+          webhookSignatureEnabled: process.env.WEBHOOK_SIGNATURE_ENABLED === 'true',
           databaseEnabled: !!process.env.DATABASE_URL,
-          sorobanAdapterMode: env.SOROBAN_NETWORK,
+          sorobanAdapterMode: process.env.SOROBAN_NETWORK,
         });
       } catch (error) {
         next(error);

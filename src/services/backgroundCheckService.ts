@@ -114,6 +114,7 @@ export class BackgroundCheckService {
         } catch (error) {
           logger.error(
             `Employment verification failed for tenant ${input.tenantId}:`,
+            undefined,
             error,
           );
           throw new AppError(
@@ -137,6 +138,7 @@ export class BackgroundCheckService {
         } catch (error) {
           logger.error(
             `Income verification failed for tenant ${input.tenantId}:`,
+            undefined,
             error,
           );
           throw new AppError(
@@ -160,6 +162,7 @@ export class BackgroundCheckService {
         } catch (error) {
           logger.error(
             `Bank statement verification failed for tenant ${input.tenantId}:`,
+            undefined,
             error,
           );
           throw new AppError(

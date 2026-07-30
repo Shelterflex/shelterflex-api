@@ -71,7 +71,7 @@ export async function seedRolesAndPermissions(): Promise<void> {
     logger.info('[seeds] Roles and permissions seeded successfully')
   } catch (error) {
     await pool.query('ROLLBACK')
-    logger.error('[seeds] Seeding failed:', error)
+    logger.error('[seeds] Seeding failed:', undefined, error)
     throw error
   }
 }
