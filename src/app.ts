@@ -160,6 +160,7 @@ import { createAdminRolesRouter } from "./routes/adminRoles.js";
 import { createAbuseRouter } from "./routes/abuse.js";
 import { createInspectorJobsRouter, createAdminInspectorJobsRouter } from "./routes/inspectorJobs.js";
 import { createQuoteRouter } from "./routes/quote.js";
+import { createPlatformStatsRouter } from "./routes/platformStats.js";
 import { createPaymentDisputeRouter } from "./routes/paymentDispute.js";
 import { createAdminQuotaRouter } from "./routes/adminQuota.js";
 import { backgroundCheckRouter } from "./routes/backgroundCheck.js";
@@ -948,6 +949,9 @@ export function createApp() {
 
   // Pricing calculator (public, no auth)
   app.use('/api/v1/quote', createQuoteRouter())
+
+  // Public platform statistics (no auth, cached)
+  app.use('/api/v1/platform-stats', createPlatformStatsRouter())
 
   // Payment dispute routes (auth + RBAC applied per-route inside the router)
   app.use('/api/v1/disputes', createPaymentDisputeRouter())

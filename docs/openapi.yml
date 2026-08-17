@@ -2234,6 +2234,29 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /api/v1/platform-stats:
+    get:
+      summary: Get platform statistics
+      description: >-
+        Returns genuine platform-wide aggregates computed from real data —
+        listing counts, deal counts and status breakdown, total financed
+        amount, and property count. Public endpoint, no authentication
+        required. Results are cached for 5 minutes.
+      operationId: getPlatformStats
+      tags:
+        - Platform Stats
+      responses:
+        '200':
+          description: Platform statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformStats'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/Error'
+
   /api/v1/disputes:
     post:
       summary: File a payment dispute
@@ -3799,6 +3822,68 @@ components:
               pattern: '^\d+(\.\d{1,6})?$'
               example: "50.250000"
 
+    PlatformStats:
+      type: object
+      required:
+        - listings
+        - deals
+        - totalFinancedNgn
+        - properties
+        - generatedAt
+      properties:
+        listings:
+          type: object
+          required:
+            - total
+            - active
+          properties:
+            total:
+              type: integer
+              description: Total number of listings on the platform
+              example: 124
+            active:
+              type: integer
+              description: Number of approved (publicly visible) listings
+              example: 98
+        deals:
+          type: object
+          required:
+            - total
+            - active
+            - completed
+          properties:
+            total:
+              type: integer
+              description: Total number of deals created
+              example: 56
+            active:
+              type: integer
+              description: Number of deals currently active or at risk
+              example: 41
+            completed:
+              type: integer
+              description: Number of successfully completed deals
+              example: 12
+        totalFinancedNgn:
+          type: number
+          format: double
+          description: Sum of financed amounts across all deals in NGN
+          example: 12500000
+        properties:
+          type: object
+          required:
+            - total
+          properties:
+            total:
+              type: integer
+              description: Total number of landlord properties listed
+              example: 87
+        generatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when these stats were computed
+          example: "2025-07-15T10:30:00.000Z"
+
   responses:
     Error:
       description: Unexpected error
@@ -3877,3 +3962,5 @@ tags:
     description: Staking operations (stake, unstake, claim rewards)
   - name: Support
     description: Public support/contact message intake
+  - name: Platform Stats
+    description: Public platform-wide statistics (listing, deal, and property aggregates)
