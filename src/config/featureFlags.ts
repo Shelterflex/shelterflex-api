@@ -25,9 +25,9 @@ export const flagDefaults = {
 
   /**
    * Lease agreement generation + e-signature workflow (routes/leaseAgreements.ts).
-   * Off by default: PDF generation is a mock placeholder and the e-signature
-   * provider is an in-memory stub not viable beyond a single process — do not
-   * enable in production until both are backed by real implementations.
+   * Off by default until the e-signature provider (ESIGN_PROVIDER) is
+   * configured for the target environment.  The stub provider is fine for
+   * local dev; use ESIGN_PROVIDER=docuseal with real credentials for staging.
    */
   LEASE_AGREEMENTS_ENABLED: false,
 } as const

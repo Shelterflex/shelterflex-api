@@ -8,12 +8,20 @@ import { leaseAgreementStore } from '../models/leaseAgreementStore.js'
 import { LeaseStatus } from '../models/leaseAgreement.js'
 import { dealStore } from '../models/dealStore.js'
 import { generateLeaseDraft, buildLeaseTemplateData } from '../services/leaseDocumentService.js'
-import { createESignatureProvider, computeDocumentHash } from '../services/eSignatureService.js'
+import { createESignatureProvider, computeDocumentHash, type ESignatureProvider } from '../services/eSignatureService.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 
 const router = Router()
-const esignProvider = createESignatureProvider()
+
+let esignProvider: ESignatureProvider | null = null
+
+async function getEsignProvider(): Promise<ESignatureProvider> {
+  if (!esignProvider) {
+    esignProvider = await createESignatureProvider()
+  }
+  return esignProvider
+}
 
 /**
  * POST /api/deals/:dealId/lease/generate
@@ -74,8 +82,9 @@ router.post(
         throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'Lease must be in draft status to send')
       }
 
-      // Create signing request with stub provider
-      await esignProvider.createSigningRequest(lease.documentKey, computeDocumentHash(lease.documentKey), [
+      // Create signing request with the configured provider
+      const provider = await getEsignProvider()
+      await provider.createSigningRequest(lease.documentKey, computeDocumentHash(lease.documentKey), [
         { id: deal.tenantId, name: `Tenant ${deal.tenantId}`, email: '', role: 'tenant' },
         { id: deal.landlordId, name: `Landlord ${deal.landlordId}`, email: '', role: 'landlord' },
       ])
@@ -126,12 +135,13 @@ router.get(
 
       // Get signing URL from provider
       // In stub mode, we create a new request for each URL request
-      const signingRequest = await esignProvider.createSigningRequest(lease.documentKey, computeDocumentHash(lease.documentKey), [
+      const provider = await getEsignProvider()
+      const signingRequest = await provider.createSigningRequest(lease.documentKey, computeDocumentHash(lease.documentKey), [
         { id: deal.tenantId, name: '', email: '', role: 'tenant' },
         { id: deal.landlordId, name: '', email: '', role: 'landlord' },
       ])
 
-      const signingUrl = await esignProvider.getSigningUrl(signingRequest.requestId, signerId)
+      const signingUrl = await provider.getSigningUrl(signingRequest.requestId, signerId)
 
       res.json({
         success: true,
@@ -218,7 +228,8 @@ router.post(
   '/webhooks/esignature',
   async (req: Request, res: Response, next) => {
     try {
-      const result = await esignProvider.handleWebhook(req.body)
+      const provider = await getEsignProvider()
+      const result = await provider.handleWebhook(req.body)
 
       // Find the lease by deal ID (from the request)
       // In production, the webhook would include the lease/deal reference
@@ -252,7 +263,7 @@ router.post(
         throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'Missing required query params: token, signer, requestId')
       }
 
-      const result = await esignProvider.handleWebhook({ token, signer, requestId })
+      const result = await (await getEsignProvider()).handleWebhook({ token, signer, requestId })
 
       res.json({
         success: true,

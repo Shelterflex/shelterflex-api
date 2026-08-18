@@ -140,12 +140,20 @@ export class StubESignatureProvider implements ESignatureProvider {
 }
 
 /**
- * Create e-signature provider based on environment config
+ * Create e-signature provider based on environment config.
+ *
+ * 'stub'   – in-memory provider for local dev / tests (default).
+ * 'docuseal' – real DocuSeal-backed provider; requires DOCUSEAL_API_KEY,
+ *              DOCUSEAL_API_URL and DOCUSEAL_WEBHOOK_SECRET.
  */
-export function createESignatureProvider(): ESignatureProvider {
+export async function createESignatureProvider(): Promise<ESignatureProvider> {
   const provider = process.env.ESIGN_PROVIDER || 'stub'
 
   switch (provider) {
+    case 'docuseal': {
+      const mod = await import('./docusealESignatureProvider.js')
+      return new mod.DocuSealESignatureProvider()
+    }
     case 'stub':
       return new StubESignatureProvider()
     default:
