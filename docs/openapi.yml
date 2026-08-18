@@ -1431,6 +1431,350 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /api/v1/deals/{dealId}/lease/generate:
+    post:
+      summary: Generate a lease draft for a deal
+      description: |
+        Creates a lease agreement draft for the specified deal.
+        Only the landlord of the deal can generate leases.
+        A deal must exist and not already have an active (non-voided) lease.
+      operationId: generateLeaseDraft
+      tags:
+        - Lease Agreements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          description: ID of the deal
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Lease draft created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - leaseId
+                      - documentKey
+                      - status
+                    properties:
+                      leaseId:
+                        type: string
+                        format: uuid
+                      documentKey:
+                        type: string
+                        example: lease/deal-1/uuid.pdf
+                      status:
+                        type: string
+                        enum: [draft]
+        '403':
+          description: Only landlords can generate leases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Deal not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/deals/{dealId}/lease/send:
+    post:
+      summary: Send lease signing requests to tenant and landlord
+      description: |
+        Creates signing requests via the configured e-signature provider
+        and transitions the lease from draft to pending signature status.
+        The lease must be in draft status.
+      operationId: sendLeaseSigningRequests
+      tags:
+        - Lease Agreements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          description: ID of the deal
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Signing requests sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - message
+                    properties:
+                      message:
+                        type: string
+                        example: Signing requests sent to tenant and landlord
+        '400':
+          description: Lease must be in draft status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Deal or lease not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/deals/{dealId}/lease/sign-url:
+    get:
+      summary: Get a signing URL for the authenticated user
+      description: |
+        Returns a unique e-signature signing URL for the authenticated user
+        (tenant or landlord) to sign the lease agreement.
+      operationId: getLeaseSigningUrl
+      tags:
+        - Lease Agreements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          description: ID of the deal
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Signing URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - url
+                      - expiresAt
+                      - signerRole
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: URL the signer should visit to sign the document
+                      expiresAt:
+                        type: string
+                        format: date-time
+                        description: When the signing URL expires
+                      signerRole:
+                        type: string
+                        enum: [tenant, landlord]
+                        description: The role of the authenticated signer
+        '403':
+          description: User is not a party to this lease
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Deal or lease not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/deals/{dealId}/lease:
+    get:
+      summary: Get current lease agreement status
+      description: Returns the current lease agreement record and its signing status.
+      operationId: getLeaseAgreement
+      tags:
+        - Lease Agreements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          description: ID of the deal
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lease agreement details
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/LeaseAgreement'
+        '404':
+          description: Deal or lease not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/deals/{dealId}/lease/void:
+    post:
+      summary: Void a lease agreement
+      description: |
+        Voids a lease agreement that has not yet been fully signed.
+        A fully signed lease cannot be voided.
+      operationId: voidLeaseAgreement
+      tags:
+        - Lease Agreements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dealId
+          in: path
+          required: true
+          description: ID of the deal
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lease voided
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required:
+                      - message
+                    properties:
+                      message:
+                        type: string
+                        example: Lease agreement voided
+        '400':
+          description: Cannot void a fully signed lease
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Lease not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/webhooks/esignature:
+    post:
+      summary: E-signature webhook endpoint
+      description: |
+        Receives signed webhook callbacks from the configured e-signature
+        provider (e.g. DocuSeal). The provider's HMAC signature is verified
+        before the payload is processed.
+      operationId: handleEsignatureWebhook
+      tags:
+        - Lease Agreements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider-specific webhook payload
+      responses:
+        '200':
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      requestId:
+                        type: string
+                      signerId:
+                        type: string
+                      signed:
+                        type: boolean
+        '401':
+          description: Invalid or missing webhook signature
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/Error'
+
   /api/admin/rewards/{rewardId}/mark-paid:
     post:
       summary: Mark reward as paid
@@ -3672,6 +4016,55 @@ components:
           description: Reference part of the canonical external reference (e.g. payment intent ID)
           example: pi_3OZxyz123456
 
+    LeaseAgreement:
+      type: object
+      required:
+        - leaseId
+        - dealId
+        - documentKey
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        leaseId:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        documentKey:
+          type: string
+          description: Provider key pointing to the generated lease document
+          example: lease/deal-1/uuid.pdf
+        status:
+          type: string
+          enum:
+            - draft
+            - pending_tenant_signature
+            - pending_landlord_signature
+            - fully_signed
+            - voided
+        tenantSignedAt:
+          type: string
+          format: date-time
+          nullable: true
+        landlordSignedAt:
+          type: string
+          format: date-time
+          nullable: true
+        tenantSignatureRef:
+          type: string
+          nullable: true
+        landlordSignatureRef:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     Error:
       type: object
       required:
@@ -3964,3 +4357,5 @@ tags:
     description: Public support/contact message intake
   - name: Platform Stats
     description: Public platform-wide statistics (listing, deal, and property aggregates)
+  - name: Lease Agreements
+    description: Lease agreement generation, e-signature, and webhook handling
