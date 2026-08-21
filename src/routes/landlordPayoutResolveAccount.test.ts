@@ -3,6 +3,17 @@ import { createTestAgent } from '../test-helpers.js'
 import { sessionStore, userStore } from '../models/authStore.js'
 import { _testOnly_clearAuthRateLimits } from '../middleware/authRateLimit.js'
 
+// ── Mock OTP + token generation so login works deterministically ──────────────
+
+vi.mock('../utils/tokens.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../utils/tokens.js')>()
+  return {
+    ...mod,
+    generateOtp: () => '123456',
+    generateToken: () => `tok-${Math.random().toString(36).slice(2)}`,
+  }
+})
+
 // ── Mock the resolver service so tests never make real HTTP calls ─────────────
 
 vi.mock('../services/BankAccountResolverService.js', () => ({
@@ -15,6 +26,7 @@ vi.mock('../services/BankAccountResolverService.js', () => ({
 import { bankAccountResolverService } from '../services/BankAccountResolverService.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
+import { otpChallengeStore } from '../models/authStore.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -38,6 +50,7 @@ describe('POST /api/v1/landlord/payout/resolve-account', () => {
   beforeEach(async () => {
     sessionStore.clear()
     userStore.clear()
+    otpChallengeStore.clear()
     _testOnly_clearAuthRateLimits()
     vi.mocked(bankAccountResolverService.resolve).mockReset()
 
