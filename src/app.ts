@@ -152,6 +152,7 @@ import { createTenantDocumentVaultRouter } from "./routes/tenantDocumentVault.js
 import { createTenantDocumentsPresignRouter } from "./routes/tenantDocumentsPresign.js";
 import { createReferralsRouter } from "./routes/referrals.js";
 import { createLandlordPayoutScheduleRouter } from "./routes/landlordPayoutSchedule.js";
+import { createLandlordPayoutResolveAccountRouter } from "./routes/landlordPayoutResolveAccount.js";
 import { createDocsRouter } from "./routes/docs.js";
 import { createListingsRouter } from "./routes/listings.js";
 import listingApplicationsRouter from "./routes/listingApplications.js";
@@ -922,6 +923,7 @@ export function createApp() {
   app.use("/api/v1", listingApplicationsRouter);
   app.use("/api/landlord/payout-schedule", deprecatedMount(), createLandlordPayoutScheduleRouter());
   app.use("/api/v1/landlord/payout-schedule", createLandlordPayoutScheduleRouter());
+  app.use("/api/v1/landlord/payout", createLandlordPayoutResolveAccountRouter());
   // Inbound webhook receiver called by an external KYC provider at a
   // pre-configured URL -- left unversioned-only; see PR notes (issue #4 sweep).
   app.use("/api/webhooks/kyc", createKycWebhookRouter());
