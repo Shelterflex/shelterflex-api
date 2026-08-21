@@ -2864,6 +2864,245 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  # ── Messaging ──────────────────────────────────────────────────────────────
+  # Real-time delivery: cursor-based polling. After sending a message the API
+  # returns the new message object immediately. Clients poll
+  # GET /messages/conversations/:id/messages?limit=N to refresh.
+  # The existing WebSocket notification server (ws://host/ws/notifications)
+  # can push a lightweight "new_message" event to trigger a poll; full
+  # SSE/WebSocket fan-out is a planned enhancement.
+
+  /api/v1/messages/conversations:
+    post:
+      summary: Create or get-or-create a conversation
+      description: >
+        Creates a new conversation between the authenticated user and `recipientId`,
+        scoped to an optional listing or deal.  If a conversation with the same
+        two participants and the same listing/deal already exists, it is returned
+        rather than creating a duplicate.
+      operationId: createOrGetConversation
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '201':
+          description: Conversation created or retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+    get:
+      summary: List conversations for the authenticated user
+      description: >
+        Returns all conversations the caller participates in, ordered by most
+        recently updated.  Each entry includes `lastMessage` and `unreadCount`.
+      operationId: listConversations
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor from a previous response's `nextCursor` field.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated conversation list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/messages/conversations/{conversationId}:
+    get:
+      summary: Get a single conversation
+      description: >
+        Returns conversation metadata including participant ids, listing/deal
+        scope, `lastMessage`, and the caller's `unreadCount`.  Returns 403 if
+        the caller is not a participant.
+      operationId: getConversation
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conversation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/messages/conversations/{conversationId}/messages:
+    get:
+      summary: List messages in a conversation (paginated)
+      description: >
+        Returns messages newest-first.  Use `before=<messageId>` to fetch
+        older pages.  The `total` field reflects all messages in the thread.
+        Returns 403 if the caller is not a participant.
+      operationId: listMessages
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: before
+          in: query
+          required: false
+          description: messageId cursor — return messages older than this one.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Paginated message list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+    post:
+      summary: Send a message to a conversation
+      description: >
+        Posts a new message.  Only participants may send.  Returns 403 for
+        non-participants and 404 if the conversation does not exist.
+      operationId: sendMessage
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/messages/conversations/{conversationId}/read:
+    post:
+      summary: Mark all messages in a conversation as read
+      description: >
+        Sets the caller's user-id in the `readBy` array of every unread message
+        in the conversation.  Idempotent — safe to call multiple times.
+        Returns 403 if the caller is not a participant.
+      operationId: markConversationRead
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Messages marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
   schemas:
     User:
@@ -4328,7 +4567,193 @@ components:
       scheme: bearer
       bearerFormat: token
 
+    # ── Messaging schemas ─────────────────────────────────────────────────────
+
+    CreateConversationRequest:
+      type: object
+      required:
+        - recipientId
+      properties:
+        recipientId:
+          type: string
+          description: User ID of the other conversation participant.
+          example: "user-abc-123"
+        listingId:
+          type: string
+          format: uuid
+          description: Optional listing this conversation is scoped to.
+          nullable: true
+        dealId:
+          type: string
+          format: uuid
+          description: Optional deal this conversation is scoped to.
+          nullable: true
+
+    Conversation:
+      type: object
+      required:
+        - conversationId
+        - participantIds
+        - createdAt
+        - updatedAt
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        participantIds:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+        listingId:
+          type: string
+          format: uuid
+          nullable: true
+        dealId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastMessage:
+          $ref: '#/components/schemas/Message'
+          nullable: true
+        unreadCount:
+          type: integer
+          minimum: 0
+          description: Number of unread messages for the requesting user.
+
+    ConversationResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Conversation'
+
+    ConversationListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          required:
+            - conversations
+            - nextCursor
+          properties:
+            conversations:
+              type: array
+              items:
+                $ref: '#/components/schemas/Conversation'
+            nextCursor:
+              type: string
+              nullable: true
+              description: Cursor for the next page; null when no more pages.
+
+    Message:
+      type: object
+      required:
+        - messageId
+        - conversationId
+        - senderId
+        - body
+        - readBy
+        - createdAt
+        - updatedAt
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+          description: User ID of the sender.
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        readBy:
+          type: array
+          description: Set of user IDs that have read this message.
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MessageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Message'
+
+    MessagePageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          required:
+            - messages
+            - nextCursor
+            - total
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+            nextCursor:
+              type: string
+              format: uuid
+              nullable: true
+              description: >
+                messageId of the oldest message in this page.  Pass as
+                `before` on the next request to fetch older messages.
+            total:
+              type: integer
+              description: Total number of messages in the conversation.
+
+    SendMessageRequest:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Message text (1–4000 characters).
+          example: "When is the earliest viewing date available?"
+
 tags:
+  - name: Messaging
+    description: Landlord↔tenant persistent messaging (conversations and messages)
   - name: Health
     description: Health check operations
   - name: Pricing

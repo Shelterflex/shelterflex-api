@@ -173,6 +173,7 @@ import { createTenantRatingCardRouter } from "./routes/tenantRatingCard.js";
 import { createRentGuaranteeProviderFromEnv } from "./services/insurance/rentGuaranteeProviderFactory.js";
 import { createAdminCreditScoreRouter, createCreditScoreRouter } from "./routes/creditScore.js";
 import { createSorobanContractsRouter } from "./routes/sorobanContracts.js";
+import { createMessagesRouter } from "./routes/messages.js";
 
 import { initFraudStore, PostgresFraudStore } from "./fraud/index.js";
 import { createAdminFraudRouter } from "./routes/adminFraud.js";
@@ -679,6 +680,7 @@ export function createApp() {
   app.use("/api/v1/auth", authRouter);
 
   app.use("/api/v1/support", createSupportRouter());
+  app.use("/api/v1/messages", createMessagesRouter());
   app.use("/api/v1/property-issue-reports", createPropertyIssueReportsRouter());
 
   // In test mode, also mount routes at /api/ for backward compatibility with existing tests
@@ -713,6 +715,7 @@ export function createApp() {
     app.use("/api", createBalanceRouter(sorobanAdapter));
     app.use("/api", createReceiptsRouter(receiptRepo));
     app.use("/api/support", createSupportRouter());
+    app.use("/api/messages", createMessagesRouter());
     app.use("/api/property-issue-reports", createPropertyIssueReportsRouter());
     app.use(
       "/api/wallet",
