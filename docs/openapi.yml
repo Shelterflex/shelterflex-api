@@ -4516,6 +4516,176 @@ components:
           description: Timestamp when these stats were computed
           example: "2025-07-15T10:30:00.000Z"
 
+    # ── Messaging schemas ─────────────────────────────────────────────────────
+
+    Message:
+      type: object
+      required:
+        - messageId
+        - conversationId
+        - senderId
+        - body
+        - readBy
+        - createdAt
+        - updatedAt
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+        body:
+          type: string
+        readBy:
+          type: array
+          items:
+            type: string
+          description: User-ids of participants who have read this message.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Conversation:
+      type: object
+      required:
+        - conversationId
+        - participantIds
+        - createdAt
+        - updatedAt
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        participantIds:
+          type: array
+          items:
+            type: string
+          minItems: 2
+        listingId:
+          type: string
+          nullable: true
+        dealId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastMessage:
+          $ref: '#/components/schemas/Message'
+        unreadCount:
+          type: integer
+          minimum: 0
+
+    ConversationResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Conversation'
+
+    ConversationListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - conversations
+            - nextCursor
+          properties:
+            conversations:
+              type: array
+              items:
+                $ref: '#/components/schemas/Conversation'
+            nextCursor:
+              type: string
+              nullable: true
+              description: Opaque cursor; pass as `cursor` on the next request.
+
+    CreateConversationRequest:
+      type: object
+      required:
+        - recipientId
+      properties:
+        recipientId:
+          type: string
+          description: User-id of the other participant.
+        listingId:
+          type: string
+          nullable: true
+        dealId:
+          type: string
+          nullable: true
+
+    MessagePageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - messages
+            - nextCursor
+            - total
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+            nextCursor:
+              type: string
+              nullable: true
+              description: Cursor for the next (older) page; pass as `before`.
+            total:
+              type: integer
+              minimum: 0
+
+    SendMessageRequest:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    MessageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Message'
+
   responses:
     Error:
       description: Unexpected error
