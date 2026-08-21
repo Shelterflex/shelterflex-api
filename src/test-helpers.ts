@@ -2,13 +2,17 @@ import supertest from 'supertest'
 import { createApp } from './app.js'
 import { expect } from 'vitest'
 
+export const RATE_LIMIT_BYPASS_TOKEN = 'test-bypass-token-12345'
+
 /**
  * Creates a supertest agent for testing the Express app.
+ * Automatically sets the rate-limit bypass header so route-level tests are
+ * never throttled by the comprehensive or advanced rate limiters.
  * Tests do not require external network access.
  */
 export function createTestAgent() {
   const app = createApp()
-  return supertest(app)
+  return supertest(app).set('x-ratelimit-bypass', RATE_LIMIT_BYPASS_TOKEN)
 }
 
 /**
@@ -34,6 +38,4 @@ export function expectErrorShape(
   expect(response.body.error).toHaveProperty('message')
   expect(typeof response.body.error.message).toBe('string')
 }
-
-export const RATE_LIMIT_BYPASS_TOKEN = 'test-bypass-token-12345'
 
