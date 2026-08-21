@@ -89,6 +89,9 @@ export function createComprehensiveRateLimiter(options: {
   defaultLimit?: number
 } = {}) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // The bypass token is used by createTestAgent() so route-level tests skip
+    // the limiter entirely.  comprehensiveRateLimit.test.ts does NOT set this
+    // header and therefore exercises the full middleware in isolation.
     const bypassHeader = req.headers['x-ratelimit-bypass']
     if (bypassHeader === RATE_LIMIT_BYPASS_TOKEN) {
       return next()

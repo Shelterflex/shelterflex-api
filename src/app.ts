@@ -152,6 +152,7 @@ import { createTenantDocumentVaultRouter } from "./routes/tenantDocumentVault.js
 import { createTenantDocumentsPresignRouter } from "./routes/tenantDocumentsPresign.js";
 import { createReferralsRouter } from "./routes/referrals.js";
 import { createLandlordPayoutScheduleRouter } from "./routes/landlordPayoutSchedule.js";
+import { createLandlordPayoutResolveAccountRouter } from "./routes/landlordPayoutResolveAccount.js";
 import { createDocsRouter } from "./routes/docs.js";
 import { createListingsRouter } from "./routes/listings.js";
 import listingApplicationsRouter from "./routes/listingApplications.js";
@@ -173,6 +174,7 @@ import { createTenantRatingCardRouter } from "./routes/tenantRatingCard.js";
 import { createRentGuaranteeProviderFromEnv } from "./services/insurance/rentGuaranteeProviderFactory.js";
 import { createAdminCreditScoreRouter, createCreditScoreRouter } from "./routes/creditScore.js";
 import { createSorobanContractsRouter } from "./routes/sorobanContracts.js";
+import { createMessagesRouter } from "./routes/messages.js";
 
 import { initFraudStore, PostgresFraudStore } from "./fraud/index.js";
 import { createAdminFraudRouter } from "./routes/adminFraud.js";
@@ -679,6 +681,7 @@ export function createApp() {
   app.use("/api/v1/auth", authRouter);
 
   app.use("/api/v1/support", createSupportRouter());
+  app.use("/api/v1/messages", createMessagesRouter());
   app.use("/api/v1/property-issue-reports", createPropertyIssueReportsRouter());
 
   // In test mode, also mount routes at /api/ for backward compatibility with existing tests
@@ -713,6 +716,7 @@ export function createApp() {
     app.use("/api", createBalanceRouter(sorobanAdapter));
     app.use("/api", createReceiptsRouter(receiptRepo));
     app.use("/api/support", createSupportRouter());
+    app.use("/api/messages", createMessagesRouter());
     app.use("/api/property-issue-reports", createPropertyIssueReportsRouter());
     app.use(
       "/api/wallet",
@@ -919,6 +923,7 @@ export function createApp() {
   app.use("/api/v1", listingApplicationsRouter);
   app.use("/api/landlord/payout-schedule", deprecatedMount(), createLandlordPayoutScheduleRouter());
   app.use("/api/v1/landlord/payout-schedule", createLandlordPayoutScheduleRouter());
+  app.use("/api/v1/landlord/payout", createLandlordPayoutResolveAccountRouter());
   // Inbound webhook receiver called by an external KYC provider at a
   // pre-configured URL -- left unversioned-only; see PR notes (issue #4 sweep).
   app.use("/api/webhooks/kyc", createKycWebhookRouter());

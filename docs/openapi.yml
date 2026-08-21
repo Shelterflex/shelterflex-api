@@ -2864,6 +2864,328 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  # ── Landlord Payout ────────────────────────────────────────────────────────
+
+  /api/v1/landlord/payout/resolve-account:
+    post:
+      summary: Resolve bank account holder name
+      description: >
+        Verifies a Nigerian bank account number against the configured payment
+        provider (Paystack or Flutterwave) and returns the real account-holder
+        name.  Never returns a placeholder — if the account cannot be found an
+        error is returned instead.
+
+
+        **Failure modes** are surfaced as distinguishable HTTP status codes:
+          - `422` — account not found or unresolvable (permanent)
+          - `429` — provider rate-limited (transient, retry after a few seconds)
+          - `503` — provider timeout or service-down (transient, retry later)
+      operationId: resolvePayoutAccount
+      tags:
+        - Landlord
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveAccountRequest'
+            examples:
+              withBankCode:
+                summary: Resolve using CBN bank code
+                value:
+                  accountNumber: "0123456789"
+                  bankCode: "058"
+              withBankName:
+                summary: Resolve using bank name (bankCode preferred)
+                value:
+                  accountNumber: "0123456789"
+                  bankCode: "058"
+                  bankName: "Guaranty Trust Bank"
+      responses:
+        '200':
+          description: Account holder name resolved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveAccountResponse'
+              example:
+                success: true
+                data:
+                  accountNumber: "0123456789"
+                  accountName: "JANE A DOE"
+                  bankCode: "058"
+                  bankName: "Guaranty Trust Bank"
+                  provider: "paystack"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Error'
+        '422':
+          description: Account not found or unresolvable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Could not verify account: Account number not found"
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: Payment provider unavailable or timed out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: SERVICE_UNAVAILABLE
+                  message: "Paystack account resolution timed out. Please try again."
+        default:
+          $ref: '#/components/responses/Error'
+
+  # ── Messaging ──────────────────────────────────────────────────────────────
+  # Real-time delivery: cursor-based polling. After sending a message the API
+  # returns the new message object immediately. Clients poll
+  # GET /messages/conversations/:id/messages?limit=N to refresh.
+  # The existing WebSocket notification server (ws://host/ws/notifications)
+  # can push a lightweight "new_message" event to trigger a poll; full
+  # SSE/WebSocket fan-out is a planned enhancement.
+
+  /api/v1/messages/conversations:
+    post:
+      summary: Create or get-or-create a conversation
+      description: >
+        Creates a new conversation between the authenticated user and `recipientId`,
+        scoped to an optional listing or deal.  If a conversation with the same
+        two participants and the same listing/deal already exists, it is returned
+        rather than creating a duplicate.
+      operationId: createOrGetConversation
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '201':
+          description: Conversation created or retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+    get:
+      summary: List conversations for the authenticated user
+      description: >
+        Returns all conversations the caller participates in, ordered by most
+        recently updated.  Each entry includes `lastMessage` and `unreadCount`.
+      operationId: listConversations
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor from a previous response's `nextCursor` field.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated conversation list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/messages/conversations/{conversationId}:
+    get:
+      summary: Get a single conversation
+      description: >
+        Returns conversation metadata including participant ids, listing/deal
+        scope, `lastMessage`, and the caller's `unreadCount`.  Returns 403 if
+        the caller is not a participant.
+      operationId: getConversation
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conversation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/messages/conversations/{conversationId}/messages:
+    get:
+      summary: List messages in a conversation (paginated)
+      description: >
+        Returns messages newest-first.  Use `before=<messageId>` to fetch
+        older pages.  The `total` field reflects all messages in the thread.
+        Returns 403 if the caller is not a participant.
+      operationId: listMessages
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: before
+          in: query
+          required: false
+          description: messageId cursor — return messages older than this one.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Paginated message list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePageResponse'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+    post:
+      summary: Send a message to a conversation
+      description: >
+        Posts a new message.  Only participants may send.  Returns 403 for
+        non-participants and 404 if the conversation does not exist.
+      operationId: sendMessage
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/messages/conversations/{conversationId}/read:
+    post:
+      summary: Mark all messages in a conversation as read
+      description: >
+        Sets the caller's user-id in the `readBy` array of every unread message
+        in the conversation.  Idempotent — safe to call multiple times.
+        Returns 403 if the caller is not a participant.
+      operationId: markConversationRead
+      tags:
+        - Messaging
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Messages marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
   schemas:
     User:
@@ -4277,6 +4599,241 @@ components:
           description: Timestamp when these stats were computed
           example: "2025-07-15T10:30:00.000Z"
 
+    # ── Messaging schemas ─────────────────────────────────────────────────────
+
+    Message:
+      type: object
+      required:
+        - messageId
+        - conversationId
+        - senderId
+        - body
+        - readBy
+        - createdAt
+        - updatedAt
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        senderId:
+          type: string
+        body:
+          type: string
+        readBy:
+          type: array
+          items:
+            type: string
+          description: User-ids of participants who have read this message.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Conversation:
+      type: object
+      required:
+        - conversationId
+        - participantIds
+        - createdAt
+        - updatedAt
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+        participantIds:
+          type: array
+          items:
+            type: string
+          minItems: 2
+        listingId:
+          type: string
+          nullable: true
+        dealId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastMessage:
+          $ref: '#/components/schemas/Message'
+        unreadCount:
+          type: integer
+          minimum: 0
+
+    ConversationResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Conversation'
+
+    ConversationListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - conversations
+            - nextCursor
+          properties:
+            conversations:
+              type: array
+              items:
+                $ref: '#/components/schemas/Conversation'
+            nextCursor:
+              type: string
+              nullable: true
+              description: Opaque cursor; pass as `cursor` on the next request.
+
+    CreateConversationRequest:
+      type: object
+      required:
+        - recipientId
+      properties:
+        recipientId:
+          type: string
+          description: User-id of the other participant.
+        listingId:
+          type: string
+          nullable: true
+        dealId:
+          type: string
+          nullable: true
+
+    MessagePageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - messages
+            - nextCursor
+            - total
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+            nextCursor:
+              type: string
+              nullable: true
+              description: Cursor for the next (older) page; pass as `before`.
+            total:
+              type: integer
+              minimum: 0
+
+    SendMessageRequest:
+      type: object
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    MessageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Message'
+
+    # ── Payout / bank-account resolution schemas ──────────────────────────────
+
+    ResolveAccountRequest:
+      type: object
+      required:
+        - accountNumber
+      properties:
+        accountNumber:
+          type: string
+          pattern: '^\d{10}$'
+          description: 10-digit NUBAN account number.
+          example: "0123456789"
+        bankCode:
+          type: string
+          description: >
+            CBN bank code (e.g. "058" for GTBank).  Required unless bankName is
+            supplied — prefer bankCode as it is unambiguous.
+          example: "058"
+        bankName:
+          type: string
+          description: Human-readable bank name used as fallback label when bankCode is absent.
+          example: "Guaranty Trust Bank"
+        provider:
+          type: string
+          enum: [paystack, flutterwave]
+          description: >
+            Override the default payment provider for this request.
+            Defaults to the server-configured PAYOUT_PROVIDER (paystack).
+
+    ResolveAccountResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+            - accountNumber
+            - accountName
+            - bankCode
+            - bankName
+            - provider
+          properties:
+            accountNumber:
+              type: string
+              example: "0123456789"
+            accountName:
+              type: string
+              description: Real account-holder name as returned by the payment provider.
+              example: "JANE A DOE"
+            bankCode:
+              type: string
+              example: "058"
+            bankName:
+              type: string
+              example: "Guaranty Trust Bank"
+            provider:
+              type: string
+              enum: [paystack, flutterwave]
+              example: "paystack"
+
   responses:
     Error:
       description: Unexpected error
@@ -4329,6 +4886,10 @@ components:
       bearerFormat: token
 
 tags:
+  - name: Landlord
+    description: Landlord account management and payout configuration
+  - name: Messaging
+    description: Landlord↔tenant persistent messaging (conversations and messages)
   - name: Health
     description: Health check operations
   - name: Pricing

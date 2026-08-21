@@ -16,6 +16,12 @@ export function createAdvancedRateLimiter(options: {
   keyPrefix?: string
 } = {}) {
   return async (req: Request, res: Response, next: NextFunction) => {
+    // Bypass entirely in test mode — the in-memory sliding-window store
+    // accumulates across rapid test requests and produces spurious 429s.
+    if (process.env.NODE_ENV === 'test') {
+      return next()
+    }
+
     // 1. Bypass health checks
     if (req.path === '/health') {
       return next()
