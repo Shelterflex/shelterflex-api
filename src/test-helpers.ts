@@ -8,11 +8,13 @@ export const RATE_LIMIT_BYPASS_TOKEN = 'test-bypass-token-12345'
  * Creates a supertest agent for testing the Express app.
  * Automatically sets the rate-limit bypass header so route-level tests are
  * never throttled by the comprehensive or advanced rate limiters.
+ * Uses supertest.agent() for a persistent session that carries the header
+ * across every request made through the returned agent.
  * Tests do not require external network access.
  */
 export function createTestAgent() {
   const app = createApp()
-  return supertest(app).set('x-ratelimit-bypass', RATE_LIMIT_BYPASS_TOKEN)
+  return supertest.agent(app).set('x-ratelimit-bypass', RATE_LIMIT_BYPASS_TOKEN)
 }
 
 /**
