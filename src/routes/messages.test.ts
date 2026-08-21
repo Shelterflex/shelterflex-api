@@ -20,6 +20,7 @@ import request from 'supertest'
 import { createApp } from '../app.js'
 import { messageStore } from '../models/messageStore.js'
 import { sessionStore, userStore } from '../models/authStore.js'
+import { resetRateLimitStore } from '../middleware/comprehensiveRateLimit.js'
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ describe('Messages API', () => {
   let outsiderToken: string
 
   beforeEach(async () => {
+    resetRateLimitStore()
     await messageStore.clear()
     userStore.clear()
     sessionStore.clear()
