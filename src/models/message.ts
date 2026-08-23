@@ -13,6 +13,8 @@ export interface Conversation {
   conversationId: string
   /** Participant user-ids — always at least two entries for a valid thread. */
   participantIds: string[]
+  /** Display name per participant, resolved from userStore (populated on list/get views). */
+  participants?: { userId: string; name: string }[]
   /** Optional listing this conversation is anchored to. */
   listingId?: string
   /** Optional deal this conversation is anchored to. */
@@ -38,6 +40,8 @@ export interface Message {
   messageId: string
   conversationId: string
   senderId: string
+  /** Sender's display name, resolved from userStore. */
+  senderName?: string
   body: string
   /** Set of user-ids who have read this message. */
   readBy: string[]
