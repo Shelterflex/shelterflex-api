@@ -478,6 +478,49 @@ describe('Messages API', () => {
 
       expect(res.body.error.code).toBe('FORBIDDEN')
     })
+
+    // Issue #32: `since` was validated by listMessagesQuerySchema and
+    // documented as "poll for new messages only", but the route handler
+    // dropped it before calling messageStore.listMessages, so it had no
+    // effect on the response.
+    it('since=<messageId> returns only messages newer than that message', async () => {
+      const all = await request(app)
+        .get(`/api/messages/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .expect(200)
+
+      // Newest-first; pick the 3rd-oldest message ("Message number 3") as the cursor.
+      const cursorMessage = all.body.data.messages.find(
+        (m: { body: string }) => m.body === 'Message number 3',
+      )
+      expect(cursorMessage).toBeDefined()
+
+      const res = await request(app)
+        .get(
+          `/api/messages/conversations/${conversationId}/messages?since=${cursorMessage.messageId}`,
+        )
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .expect(200)
+
+      const bodies = res.body.data.messages.map((m: { body: string }) => m.body).sort()
+      expect(bodies).toEqual(['Message number 4', 'Message number 5'])
+    })
+
+    it('since=<newest messageId> returns no messages', async () => {
+      const all = await request(app)
+        .get(`/api/messages/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .expect(200)
+
+      const newest = all.body.data.messages[0]
+
+      const res = await request(app)
+        .get(`/api/messages/conversations/${conversationId}/messages?since=${newest.messageId}`)
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .expect(200)
+
+      expect(res.body.data.messages).toHaveLength(0)
+    })
   })
 
   // ── Read state ────────────────────────────────────────────────────────────
@@ -613,6 +656,102 @@ describe('Messages API', () => {
       const conv = listRes.body.data.conversations[0]
       expect(conv.lastMessage).toBeDefined()
       expect(conv.lastMessage.body).toBe('The viewing is scheduled for Saturday.')
+    })
+  })
+
+  // Issue #32: Conversation.participantIds and Message.senderId were raw
+  // user-ids with no way for a client to resolve a display name. userStore
+  // already carries `name`, so the store now attaches it on read.
+  describe('Participant display names (issue #32)', () => {
+    it('getOrCreateConversation includes a participants list with names', async () => {
+      const res = await request(app)
+        .post('/api/messages/conversations')
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .send({ recipientId: tenantId })
+        .expect(201)
+
+      const { participants } = res.body.data
+      expect(participants).toEqual(
+        expect.arrayContaining([
+          { userId: landlordId, name: 'landlord' },
+          { userId: tenantId, name: 'tenant' },
+        ]),
+      )
+    })
+
+    it('GET conversation and GET conversations list both include participants', async () => {
+      const createRes = await request(app)
+        .post('/api/messages/conversations')
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .send({ recipientId: tenantId })
+        .expect(201)
+      const conversationId = createRes.body.data.conversationId
+
+      const getRes = await request(app)
+        .get(`/api/messages/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .expect(200)
+      expect(getRes.body.data.participants).toEqual(
+        expect.arrayContaining([
+          { userId: landlordId, name: 'landlord' },
+          { userId: tenantId, name: 'tenant' },
+        ]),
+      )
+
+      const listRes = await request(app)
+        .get('/api/messages/conversations')
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .expect(200)
+      expect(listRes.body.data.conversations[0].participants).toEqual(
+        expect.arrayContaining([
+          { userId: landlordId, name: 'landlord' },
+          { userId: tenantId, name: 'tenant' },
+        ]),
+      )
+    })
+
+    it('created and listed messages carry the sender display name', async () => {
+      const createRes = await request(app)
+        .post('/api/messages/conversations')
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .send({ recipientId: tenantId })
+        .expect(201)
+      const conversationId = createRes.body.data.conversationId
+
+      const postRes = await request(app)
+        .post(`/api/messages/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .send({ body: 'Hello from the landlord' })
+        .expect(201)
+      expect(postRes.body.data.senderName).toBe('landlord')
+
+      const listRes = await request(app)
+        .get(`/api/messages/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .expect(200)
+      expect(listRes.body.data.messages[0].senderName).toBe('landlord')
+    })
+
+    it('conversation lastMessage carries the sender display name', async () => {
+      const createRes = await request(app)
+        .post('/api/messages/conversations')
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .send({ recipientId: tenantId })
+        .expect(201)
+      const conversationId = createRes.body.data.conversationId
+
+      await request(app)
+        .post(`/api/messages/conversations/${conversationId}/messages`)
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .send({ body: 'Is it still available?' })
+        .expect(201)
+
+      const listRes = await request(app)
+        .get('/api/messages/conversations')
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .expect(200)
+
+      expect(listRes.body.data.conversations[0].lastMessage.senderName).toBe('tenant')
     })
   })
 })

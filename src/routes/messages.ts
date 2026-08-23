@@ -148,7 +148,7 @@ export function createMessagesRouter(): Router {
       try {
         const userId = req.user!.id
         const { conversationId } = req.params
-        const { limit, before } = req.query as unknown as z.infer<
+        const { limit, before, since } = req.query as unknown as z.infer<
           typeof listMessagesQuerySchema
         >
 
@@ -157,6 +157,7 @@ export function createMessagesRouter(): Router {
           userId,
           Number(limit),
           before,
+          since,
         )
 
         res.json({ success: true, data: page })

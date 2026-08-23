@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { getPool, type PgPoolLike } from '../db.js'
+import { userStore } from './authStore.js'
 import type {
   Conversation,
   CreateConversationInput,
@@ -19,6 +20,33 @@ import type {
   CreateMessageInput,
   MessagePage,
 } from './message.js'
+
+// ── Participant/sender display-name enrichment ────────────────────────────────
+//
+// Conversation.participantIds / Message.senderId are raw user-ids; both
+// in-memory and Postgres stores resolve display names the same way, via
+// userStore.getById (which itself falls back to an in-memory cache when
+// Postgres is unavailable), so the enrichment lives here once rather than
+// being duplicated per store implementation.
+
+async function resolveParticipants(
+  userIds: string[],
+): Promise<{ userId: string; name: string }[]> {
+  const resolved = await Promise.all(
+    userIds.map(async (userId) => {
+      const user = await userStore.getById(userId)
+      return user ? { userId, name: user.name } : null
+    }),
+  )
+  return resolved.filter((p): p is { userId: string; name: string } => p !== null)
+}
+
+async function attachSenderNames(messages: Message[]): Promise<Message[]> {
+  const uniqueSenderIds = Array.from(new Set(messages.map((m) => m.senderId)))
+  const participants = await resolveParticipants(uniqueSenderIds)
+  const nameByUserId = new Map(participants.map((p) => [p.userId, p.name]))
+  return messages.map((m) => ({ ...m, senderName: nameByUserId.get(m.senderId) }))
+}
 
 // ── Store interface ───────────────────────────────────────────────────────────
 
@@ -50,6 +78,8 @@ export interface MessageStorePort {
 
   /**
    * Fetch messages in a conversation, newest-first (cursor-based pagination).
+   * `before` pages backward to older messages; `since` restricts the result
+   * to messages newer than the given message id (for polling).
    * Throws FORBIDDEN if requestingUserId is not a participant.
    */
   listMessages(
@@ -57,6 +87,7 @@ export interface MessageStorePort {
     requestingUserId: string,
     limit?: number,
     before?: string,
+    since?: string,
   ): Promise<MessagePage>
 
   /**
@@ -166,6 +197,7 @@ class InMemoryMessageStore implements MessageStorePort {
     requestingUserId: string,
     limit = 30,
     before?: string,
+    since?: string,
   ): Promise<MessagePage> {
     const conv = this.conversations.get(conversationId)
     if (!conv) return { messages: [], nextCursor: null, total: 0 }
@@ -179,6 +211,12 @@ class InMemoryMessageStore implements MessageStorePort {
 
     const total = msgs.length
 
+    if (since) {
+      // msgs is newest-first, so everything before the cursor's index is newer than it
+      const idx = msgs.findIndex((m) => m.messageId === since)
+      if (idx !== -1) msgs = msgs.slice(0, idx)
+    }
+
     if (before) {
       const idx = msgs.findIndex((m) => m.messageId === before)
       if (idx !== -1) msgs = msgs.slice(idx + 1)
@@ -188,7 +226,8 @@ class InMemoryMessageStore implements MessageStorePort {
     const nextCursor =
       page.length === limit && msgs.length > limit ? page[page.length - 1].messageId : null
 
-    return { messages: page, nextCursor, total }
+    const messages = await attachSenderNames(page)
+    return { messages, nextCursor, total }
   }
 
   async createMessage(input: CreateMessageInput): Promise<Message> {
@@ -213,7 +252,9 @@ class InMemoryMessageStore implements MessageStorePort {
 
     // Update conversation.updatedAt
     conv.updatedAt = message.createdAt
-    return message
+
+    const [withSenderName] = await attachSenderNames([message])
+    return withSenderName
   }
 
   async markMessagesRead(conversationId: string, userId: string): Promise<void> {
@@ -235,19 +276,26 @@ class InMemoryMessageStore implements MessageStorePort {
     this.messages.clear()
   }
 
-  private enrichConversation(conv: StoredConversation, forUserId: string): Conversation {
+  private async enrichConversation(conv: StoredConversation, forUserId: string): Promise<Conversation> {
     const convMessages = Array.from(this.messages.values())
       .filter((m) => m.conversationId === conv.conversationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
-    const lastMessage = convMessages[0]
+    const lastMessageRaw = convMessages[0]
     const unreadCount = convMessages.filter(
       (m) => m.senderId !== forUserId && !m.readBy.includes(forUserId),
     ).length
 
+    const participants = await resolveParticipants(conv.participantIds)
+    const nameByUserId = new Map(participants.map((p) => [p.userId, p.name]))
+    const lastMessage = lastMessageRaw
+      ? { ...lastMessageRaw, senderName: nameByUserId.get(lastMessageRaw.senderId) }
+      : undefined
+
     return {
       conversationId: conv.conversationId,
       participantIds: conv.participantIds,
+      participants,
       listingId: conv.listingId,
       dealId: conv.dealId,
       createdAt: conv.createdAt,
@@ -346,6 +394,7 @@ class PostgresMessageStore implements MessageStorePort {
       return {
         conversationId: convRow.conversation_id,
         participantIds: [a, b],
+        participants: await resolveParticipants([a, b]),
         listingId: convRow.listing_id ?? undefined,
         dealId: convRow.deal_id ?? undefined,
         createdAt: new Date(convRow.created_at),
@@ -430,6 +479,7 @@ class PostgresMessageStore implements MessageStorePort {
     requestingUserId: string,
     limit = 30,
     before?: string,
+    since?: string,
   ): Promise<MessagePage> {
     const pool = await this.pool()
 
@@ -457,7 +507,17 @@ class PostgresMessageStore implements MessageStorePort {
     const total = Number((countResult.rows[0] as { total: string }).total)
 
     const values: unknown[] = [conversationId, limit + 1]
-    let beforeSql = ''
+    let filterSql = ''
+    if (since) {
+      const sinceResult = await pool.query(
+        `SELECT created_at FROM messages WHERE message_id = $1`,
+        [since],
+      )
+      if (sinceResult.rows.length > 0) {
+        values.push((sinceResult.rows[0] as { created_at: Date }).created_at)
+        filterSql += ` AND created_at > $${values.length}`
+      }
+    }
     if (before) {
       const beforeResult = await pool.query(
         `SELECT created_at FROM messages WHERE message_id = $1`,
@@ -465,14 +525,14 @@ class PostgresMessageStore implements MessageStorePort {
       )
       if (beforeResult.rows.length > 0) {
         values.push((beforeResult.rows[0] as { created_at: Date }).created_at)
-        beforeSql = ` AND created_at < $${values.length}`
+        filterSql += ` AND created_at < $${values.length}`
       }
     }
 
     const result = await pool.query(
       `SELECT message_id, conversation_id, sender_id, body, read_by, created_at, updated_at
          FROM messages
-        WHERE conversation_id = $1${beforeSql}
+        WHERE conversation_id = $1${filterSql}
         ORDER BY created_at DESC
         LIMIT $2`,
       values,
@@ -481,7 +541,7 @@ class PostgresMessageStore implements MessageStorePort {
     const rows = result.rows as MsgRow[]
     const hasMore = rows.length > limit
     const page = hasMore ? rows.slice(0, limit) : rows
-    const messages = page.map((r) => this.mapMessage(r))
+    const messages = await attachSenderNames(page.map((r) => this.mapMessage(r)))
     const nextCursor = hasMore ? page[page.length - 1].message_id : null
     return { messages, nextCursor, total }
   }
@@ -505,7 +565,8 @@ class PostgresMessageStore implements MessageStorePort {
       [input.conversationId, input.senderId, input.body],
     )
 
-    return this.mapMessage(result.rows[0] as MsgRow)
+    const [message] = await attachSenderNames([this.mapMessage(result.rows[0] as MsgRow)])
+    return message
   }
 
   async markMessagesRead(conversationId: string, userId: string): Promise<void> {
@@ -564,7 +625,7 @@ class PostgresMessageStore implements MessageStorePort {
       [row.conversation_id],
     )
 
-    const lastMessage =
+    const lastMessageRaw =
       lastMsgResult.rows.length > 0
         ? this.mapMessage(lastMsgResult.rows[0] as MsgRow)
         : undefined
@@ -580,9 +641,16 @@ class PostgresMessageStore implements MessageStorePort {
     )
     const unreadCount = Number((unreadResult.rows[0] as { cnt: string }).cnt)
 
+    const participants = await resolveParticipants(row.participant_ids)
+    const nameByUserId = new Map(participants.map((p) => [p.userId, p.name]))
+    const lastMessage = lastMessageRaw
+      ? { ...lastMessageRaw, senderName: nameByUserId.get(lastMessageRaw.senderId) }
+      : undefined
+
     return {
       conversationId: row.conversation_id,
       participantIds: row.participant_ids,
+      participants,
       listingId: row.listing_id ?? undefined,
       dealId: row.deal_id ?? undefined,
       createdAt: new Date(row.created_at),
@@ -625,8 +693,9 @@ class HybridMessageStore implements MessageStorePort {
     requestingUserId: string,
     limit?: number,
     before?: string,
+    since?: string,
   ): Promise<MessagePage> {
-    return (await this.adapter()).listMessages(conversationId, requestingUserId, limit, before)
+    return (await this.adapter()).listMessages(conversationId, requestingUserId, limit, before, since)
   }
 
   async createMessage(input: CreateMessageInput): Promise<Message> {
