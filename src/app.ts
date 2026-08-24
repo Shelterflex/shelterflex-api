@@ -21,6 +21,7 @@ import publicRouter from "./routes/publicRoutes.js"
 import { AppError } from "./errors/AppError.js"
 import { ErrorCode } from "./errors/errorCodes.js"
 import { requestLogger } from "./middleware/requestLogger.js"
+import { createSecurityHeaders, createDocsSecurityHeaders } from "./middleware/securityHeaders.js"
 import { getSorobanConfigFromEnv } from "./soroban/client.js"
 import { createSorobanAdapter } from "./soroban/index.js"
 import { createBalanceRouter } from "./routes/balance.js"
@@ -188,6 +189,9 @@ import { dataRetentionPurgeJobHandler, DATA_RETENTION_PURGE_JOB_NAME } from "./j
 
 export function createApp() {
   const app = express();
+
+  // Don't advertise the stack to scanners (issue #34)
+  app.disable("x-powered-by");
 
   // Trust the first proxy hop (Vercel/Render) so req.ip reflects the real client IP
   app.set('trust proxy', 1);
@@ -574,6 +578,9 @@ export function createApp() {
   }
 
   // Core middleware
+  // Security response headers first, so every router below — including the
+  // admin routers mounted ahead of the CORS block — is covered (issue #34).
+  app.use(createSecurityHeaders(env));
   app.use(requestIdMiddleware);
   app.use(traceResponseMiddleware);
 
@@ -627,6 +634,9 @@ export function createApp() {
 
   // OpenAPI / Swagger docs (issue #929). Disabled in production unless the
   // operator explicitly opts in via a guard middleware.
+  // The docs are the only HTML this app serves, so the CSP is scoped to them
+  // rather than applied to every JSON response (issue #34).
+  app.use("/docs", createDocsSecurityHeaders())
   mountOpenApiDocs(app)
 
   // API versioning — applied to all /api routes after rate limiting
