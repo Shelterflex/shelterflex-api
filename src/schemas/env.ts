@@ -3,11 +3,46 @@ import { z } from 'zod'
 
 const sorobanNetworkEnum = z.enum(['local', 'testnet', 'mainnet'])
 
+/**
+ * Boolean env values are strings: `z.coerce.boolean()` would turn the literal
+ * "false" into `true`, so security toggles parse the string explicitly.
+ */
+const booleanFromEnv = (defaultValue: boolean) =>
+  z.preprocess((value) => {
+    if (value === undefined || value === '') return defaultValue
+    if (typeof value === 'boolean') return value
+    return String(value).trim().toLowerCase() === 'true'
+  }, z.boolean())
+
 export const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.string().default('development'),
   VERSION: z.string().default('0.1.0'),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
+  // HTTP security response headers (helmet) — see src/middleware/securityHeaders.ts
+  /** Send Strict-Transport-Security. Defaults to on in production only, so local HTTP dev is unaffected. */
+  SECURITY_HSTS_ENABLED: z.preprocess(
+    (value) => (value === undefined || value === '' ? undefined : String(value).trim().toLowerCase() === 'true'),
+    z.boolean().optional(),
+  ),
+  /** Strict-Transport-Security max-age, in seconds. Default: 180 days. */
+  SECURITY_HSTS_MAX_AGE: z.coerce.number().int().nonnegative().default(15_552_000),
+  SECURITY_HSTS_INCLUDE_SUBDOMAINS: booleanFromEnv(true),
+  SECURITY_HSTS_PRELOAD: booleanFromEnv(false),
+  /** X-Frame-Options / frame policy for any HTML this API serves. */
+  SECURITY_FRAME_OPTIONS: z.enum(['DENY', 'SAMEORIGIN']).default('DENY'),
+  SECURITY_REFERRER_POLICY: z
+    .enum([
+      'no-referrer',
+      'no-referrer-when-downgrade',
+      'origin',
+      'origin-when-cross-origin',
+      'same-origin',
+      'strict-origin',
+      'strict-origin-when-cross-origin',
+      'unsafe-url',
+    ])
+    .default('no-referrer'),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(100),
   SOROBAN_RPC_URL: z.string().url().default('https://soroban-testnet.stellar.org'),

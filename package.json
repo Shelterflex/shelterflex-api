@@ -51,6 +51,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^8.2.1",
     "file-type": "^22.0.1",
+    "helmet": "^8.3.0",
     "ioredis": "^5.10.1",
     "lru-cache": "^11.2.7",
     "morgan": "^1.10.0",

@@ -345,6 +345,15 @@ CORS_ORIGINS=http://localhost:3000
 # Rate limiting (public endpoints: /health, /soroban/config)
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX_REQUESTS=100
+
+# HTTP security headers (helmet). Leave SECURITY_HSTS_ENABLED unset to follow
+# NODE_ENV — HSTS on in production, off elsewhere so local HTTP dev works.
+# SECURITY_HSTS_ENABLED=
+SECURITY_HSTS_MAX_AGE=15552000
+SECURITY_HSTS_INCLUDE_SUBDOMAINS=true
+SECURITY_HSTS_PRELOAD=false
+SECURITY_FRAME_OPTIONS=DENY
+SECURITY_REFERRER_POLICY=no-referrer
 ```
 
 ### Soroban / Stellar Configuration
