@@ -578,8 +578,10 @@ export function createApp() {
   }
 
   // Core middleware
-  // Security response headers first, so every router below — including the
-  // admin routers mounted ahead of the CORS block — is covered (issue #34).
+  // Security response headers first, so every router below is covered
+  // (issue #34). The admin timelock router that used to sit between the body
+  // parser and the CORS block now hangs below both (issue #35), so nothing is
+  // mounted ahead of the shared middleware any more.
   app.use(createSecurityHeaders(env));
   app.use(requestIdMiddleware);
   app.use(traceResponseMiddleware);
@@ -613,15 +615,6 @@ export function createApp() {
     },
   }))
 
-  // Core administrative routes
-  // NOTE (issue #4 sweep): unversioned-only, and mounted here ahead of CORS/
-  // body-parsing/rate-limit setup below -- left untouched pending investigation
-  // into whether that ordering is load-bearing before adding a /api/v1 mount.
-  app.use(
-    "/api/admin/timelock",
-    adminTimelockRouter(sorobanAdapter as any, timelockRepo),
-  );
-
   app.use(
     cors({
       origin: env.CORS_ORIGINS.split(",").map((s: string) => s.trim()),
@@ -653,6 +646,25 @@ export function createApp() {
 
   // Apply publicSearch limiter to listing/property search routes
   app.use('/api/v1/landlord/properties', publicSearchLimiter)
+
+  // Core administrative routes
+  // The timelock router governs privileged, time-locked governance actions on
+  // the Soroban adapter, so it is mounted here -- after the CORS policy, the
+  // shared express.json body parser and the API-versioning middleware -- and
+  // behind its own admin-scoped limiter (issue #35). The previous placement
+  // ahead of the CORS block was not load-bearing: the router reads only
+  // req.body (never a raw body) and needs no limiter exemption, so nothing
+  // about it requires running before the shared middleware.
+  // Still deliberately unversioned-only: adding a /api/v1 mount is issue #4's
+  // concern, not this one. It sits above createLegacyApiRedirect (mounted at
+  // the bottom of this file), which only rewrites /api/* paths that have a
+  // real /api/v1/* counterpart, so the unversioned path keeps working.
+  const adminLimiter = createRateLimiter(rateLimitProfiles.adminBulk)
+  app.use(
+    "/api/admin/timelock",
+    adminLimiter,
+    adminTimelockRouter(sorobanAdapter, timelockRepo),
+  );
 
   // Mount all API routes under /api/v1/
   app.use("/api/v1/auth", createAuthRateLimiter(env), authRouter)

@@ -34,6 +34,8 @@ export const rateLimitProfiles = {
     keyPrefix: 'rl:authed',
     keyBy: 'user',
   },
+  // Privileged admin surfaces — bulk operations and the timelock governance
+  // router (issue #35). Keyed by user where a JWT is present, IP otherwise.
   adminBulk: {
     points: 20,
     duration: 60, // 1 minute
