@@ -50,11 +50,14 @@ Config: `RECON_DRIFT_WINDOW_MS` (default 1h), `RECON_DRIFT_CAP_MINOR`
 > Auto-repair of a `missing_credit` is idempotent — retries never double-credit.
 
 The resolver re-attempts an open mismatch on every pass until it succeeds or hits
-`maxResolutionAttempts`, and the worker fires passes on a fixed interval with no
-overlap guard — so the repair effect can be invoked many times for one mismatch,
-including from two passes at once. `applyIdempotentRepair` (`repair.ts`) keys the
-repair by a deterministic, mismatch-derived key (`repairKey`) and runs the
-credit-posting effect **at most once per key**, even under concurrency:
+`maxResolutionAttempts`. The worker fires passes on a fixed interval with two
+overlap guards:
+- **Intra-process guard**: a slow pass cannot overlap itself (checks `processingPromise` before scheduling)
+- **Cluster-wide leader election**: a Postgres advisory lock (`pg_try_advisory_lock`) ensures only one replica runs passes at a time
+
+These guards prevent concurrent passes from invoking the repair effect for the same mismatch.
+`applyIdempotentRepair` (`repair.ts`) keys the repair by a deterministic, mismatch-derived key
+(`repairKey`) and runs the credit-posting effect **at most once per key**, even under concurrency:
 
 - a completed key short-circuits (the `applied` cache is bounded by size and TTL,
   so a long-running worker cannot grow it without limit);
