@@ -86,6 +86,16 @@ export const DEFAULT_TOLERANCE_RULES: ToleranceRule[] = [
   { rail: 'paystack',    toleranceMinor: 100n,  maxDelaySeconds: 3600,  maxResolutionAttempts: 3 },
   { rail: 'flutterwave', toleranceMinor: 100n,  maxDelaySeconds: 3600,  maxResolutionAttempts: 3 },
   { rail: 'manual',      toleranceMinor: 0n,    maxDelaySeconds: 86400, maxResolutionAttempts: 1 },
+  {
+    rail: 'chain',
+    // Zero tolerance: on-chain state is the source of truth for actual funds
+    toleranceMinor: 0n,
+    // Stellar ledger closes every ~5s; outbox confirmation depth is 3 ledgers by default.
+    // Allow 30s to account for RPC latency, indexer lag, and network variability.
+    maxDelaySeconds: 30,
+    // Prefer escalation over auto-repair for on-chain mismatches (moving real funds is risky)
+    maxResolutionAttempts: 0,
+  },
 ]
 
 export const SLA_HOURS_BY_CLASS: Record<MismatchClass, number> = {

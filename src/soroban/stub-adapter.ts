@@ -1,4 +1,4 @@
-import { SorobanAdapter, RecordReceiptParams, SyncDealStatusParams, TenantReputationRecord } from './adapter.js'
+import { SorobanAdapter, RecordReceiptParams, SyncDealStatusParams, TenantReputationRecord, MoneyContractType, OnChainPosition } from './adapter.js'
 import { SorobanConfig } from './client.js'
 import { RawReceiptEvent } from '../indexer/event-parser.js'
 import { logger } from '../utils/logger.js'
@@ -234,5 +234,75 @@ export class StubSorobanAdapter implements SorobanAdapter {
           const record = StubSorobanAdapter.stubReputations.get(tenantId) ?? null
           logger.debug('Soroban stub: getTenantReputation', { tenantId, found: record !== null })
           return record
+     }
+
+     /**
+      * Stub implementation of getOnChainPosition for testing.
+      * Returns deterministic on-chain positions based on contract type and account.
+      */
+     async getOnChainPosition(contractType: MoneyContractType, account?: string): Promise<OnChainPosition> {
+          const timestamp = BigInt(Math.floor(Date.now() / 1000))
+          let contractId = ''
+          let balanceMinor = 0n
+
+          switch (contractType) {
+               case 'deal_escrow':
+                    contractId = this.config.dealEscrowId ?? 'stub_deal_escrow'
+                    if (account) {
+                         const hash = this.simpleHash(`deal_escrow:${account}`)
+                         balanceMinor = BigInt(hash % 10_000) * 1_000_000n // 0-10k USDC
+                    } else {
+                         // Aggregate not yet implemented in stub
+                         balanceMinor = 1_000_000_000n // 1000 USDC default
+                    }
+                    break
+
+               case 'staking_pool':
+                    contractId = this.config.stakingPoolId ?? 'stub_staking_pool'
+                    if (account) {
+                         balanceMinor = await this.getStakedBalance(account)
+                    } else {
+                         balanceMinor = 5_000_000_000n // 5000 USDC default aggregate
+                    }
+                    break
+
+               case 'rent_wallet':
+                    contractId = this.config.contractId ?? 'stub_rent_wallet'
+                    if (account) {
+                         balanceMinor = await this.getBalance(account)
+                    } else {
+                         balanceMinor = 2_000_000_000n // 2000 USDC default aggregate
+                    }
+                    break
+
+               case 'bond_collateral':
+                    contractId = this.config.inspectorBondId ?? 'stub_bond_collateral'
+                    if (account) {
+                         const bondInfo = await this.getBond(account)
+                         balanceMinor = bondInfo.amount
+                    } else {
+                         balanceMinor = 500_000_000n // 500 USDC default aggregate
+                    }
+                    break
+
+               default:
+                    throw new Error(`Unknown contract type: ${contractType}`)
+          }
+
+          logger.debug('Soroban stub: getOnChainPosition', {
+               contractType,
+               account,
+               contractId,
+               balanceMinor: balanceMinor.toString(),
+          })
+
+          return {
+               contractType,
+               contractId,
+               account,
+               balanceMinor,
+               currency: 'USDC',
+               timestamp,
+          }
      }
 }

@@ -1,13 +1,18 @@
 import { logger } from '../utils/logger.js'
 import { runReconciliationPass } from './engine.js'
 import { runResolutionPass } from './resolver.js'
+import { reconcileChainPositions } from './chain-reconciliation.js'
+import { listPendingLedgerEvents } from './store.js'
 import type { ToleranceRule } from './types.js'
+import { DEFAULT_TOLERANCE_RULES } from './types.js'
 import {
   recordReconciliationPending,
   recordReconciliationProcessed,
-  recordReconciliationMismatch,
   recordReconciliationProcessingDuration,
 } from '../metrics.js'
+import { createSorobanAdapter } from '../soroban/index.js'
+import type { MoneyContractType } from '../soroban/adapter.js'
+import { getSorobanConfigFromEnv } from '../soroban/client.js'
 
 const RECON_INTERVAL_MS = parseInt(process.env.RECONCILIATION_INTERVAL_MS ?? '60000', 10)
 const RECON_BATCH_SIZE  = parseInt(process.env.RECONCILIATION_BATCH_SIZE  ?? '200',   10)
@@ -59,6 +64,59 @@ export class ReconciliationWorker {
       }
       for (let i = 0; i < reconResult.skipped; i++) {
         recordReconciliationProcessed('skipped')
+      }
+
+      // Chain reconciliation pass (if enabled)
+      const chainEnabled = process.env.RECON_CHAIN_ENABLED === 'true'
+      if (chainEnabled) {
+        try {
+          const sorobanConfig = getSorobanConfigFromEnv(process.env)
+          const adapter = createSorobanAdapter(sorobanConfig)
+          const chainRule = DEFAULT_TOLERANCE_RULES.find(r => r.rail === 'chain')
+          if (!chainRule) {
+            logger.warn('[ReconciliationWorker] Chain rail not found in tolerance rules')
+          } else {
+            // Configure which contracts to check from environment
+            const contractTypesEnv = process.env.RECON_CHAIN_CONTRACT_TYPES || 'staking_pool,bond_collateral'
+            const contractTypes = contractTypesEnv.split(',') as MoneyContractType[]
+            
+            // Get pending ledger events to reconcile against
+            const ledgerEvents = await listPendingLedgerEvents(RECON_BATCH_SIZE)
+            
+            // Extract unique accounts from ledger events (filter undefined first)
+            const accounts = [...new Set(ledgerEvents.map(e => e.userId).filter((id): id is string => id !== undefined))]
+            
+            const chainResult = await reconcileChainPositions(
+              adapter,
+              {
+                contractTypes,
+                accounts,
+                chainRule,
+              },
+              ledgerEvents,
+            )
+            logger.info('[ReconciliationWorker] Chain reconciliation pass done', { ...chainResult })
+            
+            // Record chain reconciliation metrics
+            recordReconciliationPending(chainResult.matched + chainResult.mismatches + chainResult.skipped + chainResult.unknown)
+            for (let i = 0; i < chainResult.matched; i++) {
+              recordReconciliationProcessed('matched')
+            }
+            for (let i = 0; i < chainResult.mismatches; i++) {
+              recordReconciliationProcessed('mismatch')
+            }
+            for (let i = 0; i < chainResult.skipped; i++) {
+              recordReconciliationProcessed('skipped')
+            }
+            for (let i = 0; i < chainResult.unknown; i++) {
+              recordReconciliationProcessed('skipped') // unknown counts as skipped for metrics
+            }
+          }
+        } catch (chainErr) {
+          logger.error('[ReconciliationWorker] Chain reconciliation pass failed', {
+            error: chainErr instanceof Error ? chainErr.message : String(chainErr),
+          })
+        }
       }
 
       const resolveResult = await runResolutionPass()
