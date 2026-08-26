@@ -11,6 +11,34 @@ import type {
 } from './types.js'
 import { SLA_HOURS_BY_CLASS } from './types.js'
 
+// ── Leader election (Postgres advisory lock) ───────────────────────────────────
+
+const RECONCILIATION_LEADER_LOCK_KEY = 123456789 // Fixed key for reconciliation leader election
+
+/**
+ * Try to acquire the reconciliation leader lock using Postgres advisory lock.
+ * Returns true if lock was acquired (this instance is now the leader), false otherwise.
+ * The lock is session-level and is automatically released when the session ends or
+ * explicitly via releaseLeaderLock().
+ */
+export async function tryAcquireLeaderLock(): Promise<boolean> {
+  const pool = await getPool()
+  if (!pool) return false
+  const { rows } = await pool.query('SELECT pg_try_advisory_lock($1) AS acquired', [RECONCILIATION_LEADER_LOCK_KEY])
+  return rows[0].acquired as boolean
+}
+
+/**
+ * Release the reconciliation leader lock.
+ * Returns true if lock was released, false if this session did not hold the lock.
+ */
+export async function releaseLeaderLock(): Promise<boolean> {
+  const pool = await getPool()
+  if (!pool) return false
+  const { rows } = await pool.query('SELECT pg_advisory_unlock($1) AS released', [RECONCILIATION_LEADER_LOCK_KEY])
+  return rows[0].released as boolean
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function rowToLedger(row: Record<string, unknown>): LedgerEvent {

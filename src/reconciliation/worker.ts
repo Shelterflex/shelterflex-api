@@ -2,7 +2,7 @@ import { logger } from '../utils/logger.js'
 import { runReconciliationPass } from './engine.js'
 import { runResolutionPass } from './resolver.js'
 import { reconcileChainPositions } from './chain-reconciliation.js'
-import { listPendingLedgerEvents } from './store.js'
+import { listPendingLedgerEvents, tryAcquireLeaderLock, releaseLeaderLock } from './store.js'
 import type { ToleranceRule } from './types.js'
 import { DEFAULT_TOLERANCE_RULES } from './types.js'
 import {
@@ -27,6 +27,11 @@ export class ReconciliationWorker {
     if (this.interval) return
     logger.info('[ReconciliationWorker] Starting', { intervalMs, batchSize: RECON_BATCH_SIZE })
     this.interval = setInterval(() => {
+      // Skip tick if previous pass is still running (intra-process overlap guard)
+      if (this.processingPromise) {
+        logger.warn('[ReconciliationWorker] Previous pass still in progress, skipping tick')
+        return
+      }
       this.processingPromise = this.poll().finally(() => {
         this.processingPromise = null
       })
@@ -47,16 +52,25 @@ export class ReconciliationWorker {
 
   async poll() {
     const startTime = Date.now()
+    let lockAcquired = false
+
     try {
+      // Try to acquire leader lock (cluster-wide single-leader guarantee)
+      lockAcquired = await tryAcquireLeaderLock()
+      if (!lockAcquired) {
+        logger.debug('[ReconciliationWorker] Another instance holds the leader lock, skipping pass')
+        return
+      }
+
+      logger.debug('[ReconciliationWorker] Leader lock acquired, starting pass')
       const reconResult = await runReconciliationPass(this.toleranceRules, RECON_BATCH_SIZE)
       logger.info('[ReconciliationWorker] Reconciliation pass done', reconResult)
 
       // Record pending count (matched + mismatches + skipped = total processed)
       recordReconciliationPending(reconResult.matched + reconResult.mismatches + reconResult.skipped)
 
-      // Record processed counts by status
-      recordReconciliationProcessed('matched')
-      for (let i = 1; i < reconResult.matched; i++) {
+      // Record processed counts by status (exact counts, including 0)
+      for (let i = 0; i < reconResult.matched; i++) {
         recordReconciliationProcessed('matched')
       }
       for (let i = 0; i < reconResult.mismatches; i++) {
@@ -128,6 +142,12 @@ export class ReconciliationWorker {
       logger.error('[ReconciliationWorker] Poll failed', {
         error: err instanceof Error ? err.message : String(err),
       })
+    } finally {
+      // Release leader lock if we acquired it
+      if (lockAcquired) {
+        await releaseLeaderLock()
+        logger.debug('[ReconciliationWorker] Leader lock released')
+      }
     }
   }
 }
