@@ -50,11 +50,14 @@ Config: `RECON_DRIFT_WINDOW_MS` (default 1h), `RECON_DRIFT_CAP_MINOR`
 > Auto-repair of a `missing_credit` is idempotent — retries never double-credit.
 
 The resolver re-attempts an open mismatch on every pass until it succeeds or hits
-`maxResolutionAttempts`, and the worker fires passes on a fixed interval with no
-overlap guard — so the repair effect can be invoked many times for one mismatch,
-including from two passes at once. `applyIdempotentRepair` (`repair.ts`) keys the
-repair by a deterministic, mismatch-derived key (`repairKey`) and runs the
-credit-posting effect **at most once per key**, even under concurrency:
+`maxResolutionAttempts`. The worker fires passes on a fixed interval with two
+overlap guards:
+- **Intra-process guard**: a slow pass cannot overlap itself (checks `processingPromise` before scheduling)
+- **Cluster-wide leader election**: a Postgres advisory lock (`pg_try_advisory_lock`) ensures only one replica runs passes at a time
+
+These guards prevent concurrent passes from invoking the repair effect for the same mismatch.
+`applyIdempotentRepair` (`repair.ts`) keys the repair by a deterministic, mismatch-derived key
+(`repairKey`) and runs the credit-posting effect **at most once per key**, even under concurrency:
 
 - a completed key short-circuits (the `applied` cache is bounded by size and TTL,
   so a long-running worker cannot grow it without limit);
@@ -94,3 +97,64 @@ to `auto_resolved` without a handler explicitly doing so.
 - Durable/cross-process enforcement of I2/I3 (the in-process accountant bounds a
   worker window and feeds the alerting metric; the durable form is a DB unique
   constraint on `repairKey` and a persisted window — a follow-up).
+
+## I6 — Chain rail invariants
+
+> The chain rail (on-chain reconciliation) upholds the same safety properties as
+> fiat rails, with chain-specific handling for finality and RPC availability.
+
+The chain rail extends the reconciliation engine to cover on-chain state by reading
+positions from money contracts (deal_escrow, staking_pool, rent_wallet, bond_collateral)
+via the SorobanAdapter and classifying drift against the off-chain ledger.
+
+### I6.1 — Bounded, observable drift (chain)
+
+> On-chain drift is bounded and observable via the same drift accounting as fiat rails.
+
+The chain rail uses `toleranceMinor: 0` (on-chain state is the source of truth) and
+the same `tryAbsorbDrift` cap from I2. Any ledger-vs-chain delta is either:
+- Exactly zero (match)
+- Escalated as `amount_mismatch` (zero tolerance means no absorption)
+
+The drift cap applies to the `chain:USDC` bucket, so systematic on-chain drift is
+alertable via `reconciliation_tolerance_absorbed_minor_total` and
+`reconciliation_drift_cap_breach_total`.
+
+### I6.2 — Circuit breaker degradation (never silent auto-resolve)
+
+> RPC unavailability degrades through the circuit breaker and escalates as "unknown",
+> never auto-resolves to "matched".
+
+When the SorobanAdapter is wrapped by CircuitBreakerAdapter, `getOnChainPosition`
+is protected by the circuit breaker. If the circuit is open (RPC unavailable), the
+chain reconciliation pass catches `CircuitBreakerOpenError` and counts the check as
+`unknown` — it never treats unavailability as a match. This prevents silent drift
+during outages.
+
+### I6.3 — Finality respect (no false positives)
+
+> In-flight settlements and unconfirmed outbox items are not flagged as mismatches.
+
+The chain rail respects finality by:
+- Using the chain rail's `maxDelaySeconds` (30s, based on Stellar ledger close time
+  ~5s + outbox confirmation depth 3 ledgers) to allow for settlement confirmation
+- Checking the outbox for items still in `CONFIRMING` status (within confirmation window)
+- Classifying these as non-terminal (`skipped` / `delayed_settlement`) rather than
+  `amount_mismatch`
+
+This prevents false positives when a settlement is genuinely in-flight but not yet
+finalized on-chain.
+
+### I6.4 — Idempotent repair (I3 holds for chain)
+
+> Auto-repair of an on-chain mismatch is idempotent under concurrent passes.
+
+The chain rail reuses the existing `applyIdempotentRepair` mechanism from I3. The
+repair key is derived from the mismatch (including the chain rail identifier), so:
+- Concurrent passes never apply the same repair twice
+- A failed repair is not recorded, allowing retry
+- The durable guarantee is the same DB unique constraint on `repairKey`
+
+Given `maxResolutionAttempts: 0` for the chain rail, most on-chain mismatches
+escalate to ops rather than auto-resolve — auto-repair is only used for provably
+safe cases (e.g., correcting a ledger entry that was never applied on-chain).

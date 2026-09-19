@@ -27,6 +27,29 @@ export interface SyncDealStatusParams {
 }
 
 /**
+ * Money contract types that hold user funds on-chain.
+ * These are the contracts that need to be reconciled against the off-chain ledger.
+ */
+export type MoneyContractType =
+  | 'deal_escrow'      // Holds rent deposits
+  | 'staking_pool'     // Holds stakes
+  | 'rent_wallet'      // Holds tenant balances
+  | 'bond_collateral'  // Holds posted bonds
+
+/**
+ * On-chain position read result for a money contract.
+ * Represents the contract's view of what it owes or holds for an account/aggregation.
+ */
+export interface OnChainPosition {
+  contractType: MoneyContractType
+  contractId: string
+  account?: string  // Optional: for per-account reads; undefined for aggregate obligation reads
+  balanceMinor: bigint  // The on-chain balance in minor units
+  currency: string  // Typically 'USDC' for on-chain contracts
+  timestamp: bigint  // Ledger timestamp when this position was read
+}
+
+/**
  * Callback fired after a Stellar transaction is signed and hashed but *before*
  * it is broadcast to the network. Persisting the hash at this point allows a
  * worker that crashes between broadcast and result-recording to recover by
@@ -96,4 +119,15 @@ export interface SorobanAdapter {
   setOperator?(contractId: string, operatorAddress: string | null): Promise<string>
   init?(contractId: string, adminAddress: string, operatorAddress?: string): Promise<string>
   syncDealStatus?(params: SyncDealStatusParams): Promise<void>
+
+  /**
+   * Read on-chain position from a money contract for reconciliation.
+   * This reads the contract's view of what it owes or holds, either as an aggregate
+   * obligation (if the contract supports it) or per-account balance.
+   *
+   * @param contractType - The type of money contract (deal_escrow, staking_pool, etc.)
+   * @param account - Optional account address for per-account reads; if undefined, reads aggregate obligation
+   * @returns The on-chain position including balance, contract info, and timestamp
+   */
+  getOnChainPosition?(contractType: MoneyContractType, account?: string): Promise<OnChainPosition>
 }

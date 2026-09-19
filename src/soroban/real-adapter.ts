@@ -11,7 +11,13 @@ import {
   StrKey,
   BASE_FEE,
 } from '@stellar/stellar-sdk'
-import { SorobanAdapter, RecordReceiptParams, SyncDealStatusParams } from './adapter.js'
+import {
+  SorobanAdapter,
+  RecordReceiptParams,
+  SyncDealStatusParams,
+  MoneyContractType,
+  OnChainPosition,
+} from './adapter.js'
 import { SorobanConfig } from './client.js'
 import { RawReceiptEvent } from '../indexer/event-parser.js'
 import { logger } from '../utils/logger.js'
@@ -1324,5 +1330,118 @@ export class RealSorobanAdapter implements SorobanAdapter {
     )
     const native = scValToNative(retval)
     return { isBonded: Boolean(native.is_bonded), amount: BigInt(native.amount ?? 0) }
+  }
+
+  /**
+   * Read on-chain position from a money contract for reconciliation.
+   * 
+   * This implementation uses per-account balance reads via existing adapter methods.
+   * TODO: When the companion shelterflex-contracts issue merges aggregate obligation reads,
+   * switch to those for better performance and race-condition resistance.
+   * 
+   * @param contractType - The type of money contract to read from
+   * @param account - Optional account address; if undefined, reads aggregate (when available)
+   * @returns The on-chain position with balance, contract info, and ledger timestamp
+   */
+  async getOnChainPosition(contractType: MoneyContractType, account?: string): Promise<OnChainPosition> {
+    return tracer.startActiveSpan('RealSorobanAdapter.getOnChainPosition', async (span) => {
+      span.setAttribute('soroban.contract_type', contractType)
+      if (account) span.setAttribute('soroban.account', account)
+
+      try {
+        const latest = await this.withBackoff(
+          () => this.server.getLatestLedger(),
+          { op: 'getLatestLedger' }
+        )
+        const timestamp = BigInt(latest.timestamp)
+
+        let contractId: string
+        let balanceMinor: bigint
+        let currency = 'USDC'
+
+        // Map contract type to contract ID and read method
+        switch (contractType) {
+          case 'deal_escrow':
+            contractId = this.config.dealEscrowId ?? ''
+            if (!contractId) {
+              throw new ConfigurationError('SOROBAN_DEAL_ESCROW_ID not configured')
+            }
+            // deal_escrow doesn't have a direct per-account balance read in the adapter yet
+            // For now, use the USDC token balance as a proxy for the account's position
+            if (!account) {
+              throw new ConfigurationError('Account required for deal_escrow position read (aggregate not yet implemented)')
+            }
+            balanceMinor = await this.getBalance(account)
+            break
+
+          case 'staking_pool':
+            contractId = this.config.stakingPoolId ?? ''
+            if (!contractId) {
+              throw new ConfigurationError('SOROBAN_STAKING_POOL_ID not configured')
+            }
+            if (!account) {
+              throw new ConfigurationError('Account required for staking_pool position read (aggregate not yet implemented)')
+            }
+            balanceMinor = await this.getStakedBalance(account)
+            break
+
+          case 'rent_wallet':
+            contractId = this.config.contractId ?? ''
+            if (!contractId) {
+              throw new ConfigurationError('SOROBAN_CONTRACT_ID not configured for rent_wallet')
+            }
+            if (!account) {
+              throw new ConfigurationError('Account required for rent_wallet position read (aggregate not yet implemented)')
+            }
+            // rent_wallet uses USDC token balance
+            balanceMinor = await this.getBalance(account)
+            break
+
+          case 'bond_collateral': {
+            contractId = this.config.inspectorBondId ?? ''
+            if (!contractId) {
+              throw new ConfigurationError('SOROBAN_INSPECTOR_BOND_ID not configured')
+            }
+            if (!account) {
+              throw new ConfigurationError('Account required for bond_collateral position read (aggregate not yet implemented)')
+            }
+            const bondInfo = await this.getBond(account)
+            balanceMinor = bondInfo.amount
+            break
+          }
+
+          default:
+            throw new ConfigurationError(`Unknown contract type: ${contractType}`)
+        }
+
+        span.setAttribute('soroban.balance', balanceMinor.toString())
+        span.setAttribute('soroban.contract_id', contractId)
+        span.setStatus({ code: SpanStatusCode.OK })
+
+        return {
+          contractType,
+          contractId,
+          account,
+          balanceMinor,
+          currency,
+          timestamp,
+        }
+      } catch (err) {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: err instanceof Error ? err.message : String(err),
+        })
+        if (err instanceof Error) span.recordException(err)
+        if (err instanceof SorobanError) throw err
+        throw new ContractError(
+          `Failed to get on-chain position for ${contractType}`,
+          contractType,
+          'getOnChainPosition',
+          err
+        )
+      } finally {
+        span.end()
+      }
+    })
   }
 }
