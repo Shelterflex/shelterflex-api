@@ -1,4 +1,4 @@
-import { outboxStore, TxType } from '../outbox/index.js'
+import { outboxStore, TxType, OutboxStatus } from '../outbox/index.js'
 import { SorobanAdapter } from '../soroban/adapter.js'
 import { OutboxSender } from '../outbox/index.js'
 import { conversionStore } from '../models/conversionStore.js'
@@ -48,7 +48,14 @@ export class StakingService {
       },
     })
 
-    const sent = await this.sender.send(outboxItem)
+    // outboxStore.create() returns the pre-existing item for a repeat conversionId
+    // regardless of its status, so re-processing a completed conversion (e.g. the
+    // finalizer job re-polling before conversionStore.listCompleted() excludes it)
+    // must not re-invoke the sender on an item that has already left the retry loop.
+    const terminalStatuses = new Set([OutboxStatus.SENT, OutboxStatus.DEAD, OutboxStatus.CONFIRMING])
+    const sent = terminalStatuses.has(outboxItem.status)
+      ? outboxItem.status === OutboxStatus.SENT
+      : await this.sender.send(outboxItem)
 
     const updatedItem = await outboxStore.getById(outboxItem.id)
     if (!updatedItem) {
