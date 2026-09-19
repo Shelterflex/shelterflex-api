@@ -121,7 +121,7 @@ function getMockPaymentHistory(dealId: string) {
   const now = new Date()
   const base = [
     {
-      id: "payment-01",
+      id: "5eed0002-0000-4000-8000-000000000001",
       dealId,
       reference: "REF-17290",
       amount: 120000,
@@ -133,7 +133,7 @@ function getMockPaymentHistory(dealId: string) {
       daysOverdue: 0,
     },
     {
-      id: "payment-02",
+      id: "5eed0002-0000-4000-8000-000000000002",
       dealId,
       reference: "REF-17291",
       amount: 120000,
@@ -145,7 +145,7 @@ function getMockPaymentHistory(dealId: string) {
       daysOverdue: 10,
     },
     {
-      id: "payment-03",
+      id: "5eed0002-0000-4000-8000-000000000003",
       dealId,
       reference: "REF-17292",
       amount: 120000,
