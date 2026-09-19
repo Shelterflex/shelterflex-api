@@ -1353,7 +1353,7 @@ export class RealSorobanAdapter implements SorobanAdapter {
           () => this.server.getLatestLedger(),
           { op: 'getLatestLedger' }
         )
-        const timestamp = BigInt(latest.timestamp)
+        const timestamp = BigInt((latest as any).timestamp)
 
         let contractId: string
         let balanceMinor: bigint
