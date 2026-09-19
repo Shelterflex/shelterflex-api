@@ -1004,7 +1004,11 @@ export function createApp() {
 
   // Lease agreement generation + e-signature — gated off by default; PDF
   // generation and the e-signature provider are still mock/in-memory stubs.
-  app.use('/api/v1', requireFlag('LEASE_AGREEMENTS_ENABLED'), createLeaseAgreementsRouter())
+  // The flag is enforced per-route inside the router (not here at the mount):
+  // its routes are nested under /deals/:dealId/lease/..., not their own
+  // prefix, so gating at this bare '/api/v1' mount previously made requireFlag
+  // a catch-all 403 for every unmatched '/api/v1/*' request (e.g. /api/v1/health).
+  app.use('/api/v1', createLeaseAgreementsRouter())
 
   // Interactive API documentation
   app.use("/docs", createDocsRouter());

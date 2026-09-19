@@ -4,6 +4,7 @@
 
 import { Router, Response, Request } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { requireFlag } from '../middleware/requireFlag.js'
 import { leaseAgreementStore } from '../models/leaseAgreementStore.js'
 import { LeaseStatus } from '../models/leaseAgreement.js'
 import { dealStore } from '../models/dealStore.js'
@@ -29,6 +30,7 @@ async function getEsignProvider(): Promise<ESignatureProvider> {
  */
 router.post(
   '/deals/:dealId/lease/generate',
+  requireFlag('LEASE_AGREEMENTS_ENABLED'),
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
@@ -63,6 +65,7 @@ router.post(
  */
 router.post(
   '/deals/:dealId/lease/send',
+  requireFlag('LEASE_AGREEMENTS_ENABLED'),
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
@@ -108,6 +111,7 @@ router.post(
  */
 router.get(
   '/deals/:dealId/lease/sign-url',
+  requireFlag('LEASE_AGREEMENTS_ENABLED'),
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
@@ -163,6 +167,7 @@ router.get(
  */
 router.get(
   '/deals/:dealId/lease',
+  requireFlag('LEASE_AGREEMENTS_ENABLED'),
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
@@ -194,6 +199,7 @@ router.get(
  */
 router.post(
   '/deals/:dealId/lease/void',
+  requireFlag('LEASE_AGREEMENTS_ENABLED'),
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
@@ -226,6 +232,7 @@ router.post(
  */
 router.post(
   '/webhooks/esignature',
+  requireFlag('LEASE_AGREEMENTS_ENABLED'),
   async (req: Request, res: Response, next) => {
     try {
       const provider = await getEsignProvider()
@@ -251,6 +258,7 @@ router.post(
  */
 router.post(
   '/webhooks/esignature/stub',
+  requireFlag('LEASE_AGREEMENTS_ENABLED'),
   async (req: Request, res: Response, next) => {
     try {
       const { token, signer, requestId } = (req as any).query as {
