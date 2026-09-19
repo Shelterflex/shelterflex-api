@@ -16,11 +16,11 @@ Initialized in `src/tracing.ts` (imported first in `src/index.ts`).
 | --- | --- | --- |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318/v1/traces` | OTLP HTTP trace endpoint |
 | `OTEL_SAMPLING_RATIO` | `1.0` | Trace sampling ratio |
-| `NODE_ENV` | — | `development` uses console span export; other values use OTLP HTTP |
+| `OTEL_CONSOLE_EXPORTER` | `false` | `true` prints every span to stdout instead of exporting over OTLP. Debugging only — background workers poll on a timer, so this floods the terminal even with no traffic. |
 
 Auto-instrumentation covers Express HTTP, PostgreSQL (`pg`), and outgoing HTTP.
 
-**Local verification:** run Jaeger or another OTLP HTTP receiver, or start with `NODE_ENV=development` and inspect console span output.
+**Local verification:** run Jaeger or another OTLP HTTP receiver, or start with `OTEL_CONSOLE_EXPORTER=true` and inspect console span output.
 
 ## Prometheus metrics (`GET /metrics`)
 

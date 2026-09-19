@@ -34,8 +34,10 @@ const otlpExporter = new OTLPTraceExporter({
   headers: parseHeaders(env.OTEL_EXPORTER_OTLP_HEADERS),
 });
 
-const isDevelopment = env.NODE_ENV === "development";
-const traceExporter = isDevelopment
+// Console span export is opt-in. It prints every span - including the background
+// worker polls that run on a timer with no traffic - to stdout, which drowns the
+// application's own logs. Default is OTLP regardless of NODE_ENV.
+const traceExporter = env.OTEL_CONSOLE_EXPORTER
   ? new ConsoleSpanExporter()
   : otlpExporter;
 
