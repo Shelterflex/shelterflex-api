@@ -185,10 +185,13 @@ export function createWhistleblowerRouter(earningsService: EarningsService): Rou
    */
   router.post(
     '/listings',
+    authenticateToken,
     validate(createListingSchema),
-    async (req: Request, res: Response, next: NextFunction) => {
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        const input = req.body
+        // The reporter is whoever is signed in; trusting a body field let
+        // anyone file reports (and use up the monthly quota) as anyone else.
+        const input = { ...req.body, whistleblowerId: req.user!.id }
         logger.info('Creating new listing', {
           whistleblowerId: input.whistleblowerId,
           address: input.address,

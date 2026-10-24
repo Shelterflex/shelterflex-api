@@ -4,6 +4,15 @@ import request from 'supertest'
 import { createApp } from '../app.js'
 import { listingStore } from '../models/listingStore.js'
 import { ListingStatus } from '../models/listing.js'
+import { sessionStore, userStore } from '../models/authStore.js'
+
+/** Signs a user in (in-memory fallback store) and returns their id and token. */
+async function signIn(email: string): Promise<{ userId: string; token: string }> {
+  const user = await userStore.getOrCreateByEmail(email)
+  const token = `token-${email.replace(/[^a-z0-9]/gi, '-')}`
+  await sessionStore.create(email, token)
+  return { userId: user.id, token }
+}
 
 describe('Whistleblower Earnings API', () => {
   const request = createTestAgent()
@@ -115,14 +124,17 @@ describe('Whistleblower Earnings API', () => {
 
 describe('Whistleblower Listings API', () => {
   const app = createApp()
+  let reporter: { userId: string; token: string }
+  let otherReporter: { userId: string; token: string }
 
   beforeEach(async () => {
     await listingStore.clear()
+    reporter = await signIn('wb-001@example.com')
+    otherReporter = await signIn('wb-002@example.com')
   })
 
   describe('POST /api/whistleblower/listings', () => {
     const validListing = {
-      whistleblowerId: 'wb-001',
       address: '123 Main Street, Ikeja',
       city: 'Lagos',
       area: 'Ikeja',
@@ -139,6 +151,7 @@ describe('Whistleblower Listings API', () => {
     it('should create a listing successfully', async () => {
       const response = await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send(validListing)
         .expect(201)
       expect(response.body.success).toBe(true)
@@ -147,10 +160,23 @@ describe('Whistleblower Listings API', () => {
       expect(response.body.listing.address).toBe(validListing.address)
       expect(response.body.listing.status).toBe(ListingStatus.PENDING_REVIEW)
       expect(response.body.listing.photos).toHaveLength(3)
+      expect(response.body.listing.whistleblowerId).toBe(reporter.userId)
+    })
+    it('requires a signed-in reporter', async () => {
+      await request(app).post('/api/whistleblower/listings').send(validListing).expect(401)
+    })
+    it('files the listing as the signed-in user, ignoring a whistleblowerId in the body', async () => {
+      const response = await request(app)
+        .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
+        .send({ ...validListing, whistleblowerId: otherReporter.userId })
+        .expect(201)
+      expect(response.body.listing.whistleblowerId).toBe(reporter.userId)
     })
     it('should reject listing without address', async () => {
       const response = await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
           address: '',
@@ -163,6 +189,7 @@ describe('Whistleblower Listings API', () => {
     it('should reject listing with invalid annual rent (zero)', async () => {
       const response = await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
           annualRentNgn: 0,
@@ -174,6 +201,7 @@ describe('Whistleblower Listings API', () => {
     it('should reject listing with negative annual rent', async () => {
       const response = await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
           annualRentNgn: -1000,
@@ -185,6 +213,7 @@ describe('Whistleblower Listings API', () => {
     it('should reject listing with less than 3 photos', async () => {
       const response = await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
           photos: [
@@ -200,6 +229,7 @@ describe('Whistleblower Listings API', () => {
     it('should reject listing with invalid photo URLs', async () => {
       const response = await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
           photos: ['not-a-url', 'also-not-a-url', 'still-not-a-url'],
@@ -212,11 +242,13 @@ describe('Whistleblower Listings API', () => {
       // Create first listing
       await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send(validListing)
         .expect(201)
       // Create second listing
       await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
           address: '456 Another Street',
@@ -225,6 +257,7 @@ describe('Whistleblower Listings API', () => {
       // Third listing should be rejected
       const response = await request(app)
         .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
           address: '789 Third Street',
@@ -241,16 +274,19 @@ describe('Whistleblower Listings API', () => {
       // Whistleblower 1 creates 2 listings
       await request(app)
         .post('/api/whistleblower/listings')
-        .send({ ...validListing, whistleblowerId: 'wb-001' })
+        .set('Authorization', `Bearer ${reporter.token}`)
+        .send(validListing)
         .expect(201)
       await request(app)
         .post('/api/whistleblower/listings')
-        .send({ ...validListing, whistleblowerId: 'wb-001', address: '456 Street' })
+        .set('Authorization', `Bearer ${reporter.token}`)
+        .send({ ...validListing, address: '456 Street' })
         .expect(201)
       // Whistleblower 2 should still be able to create listings
       const response = await request(app)
         .post('/api/whistleblower/listings')
-        .send({ ...validListing, whistleblowerId: 'wb-002' })
+        .set('Authorization', `Bearer ${otherReporter.token}`)
+        .send(validListing)
         .expect(201)
       expect(response.body.success).toBe(true)
     })

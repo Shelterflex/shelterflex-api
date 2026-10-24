@@ -5,7 +5,9 @@ import { ListingStatus } from '../models/listing.js'
  * Schema for creating a new listing
  */
 export const createListingSchema = z.object({
-  whistleblowerId: z.string().min(1, 'Whistleblower ID is required'),
+  // Taken from the authenticated session by POST /whistleblower/listings; a
+  // value sent in the body is ignored.
+  whistleblowerId: z.string().min(1).optional(),
   address: z.string().min(1, 'Address is required'),
   city: z.string().optional(),
   area: z.string().optional(),
