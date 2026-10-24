@@ -7,6 +7,10 @@ export default defineConfig({
     setupFiles: ['src/test-setup.ts'],
     include: ['src/**/*.test.ts'],
     env: {
+      // src/schemas/env.ts loads dotenv; point it away from the developer's
+      // .env so a local DATABASE_URL or blank SOROBAN_* values don't make
+      // results differ from CI. Put test-only overrides in .env.test.
+      DOTENV_CONFIG_PATH: '.env.test',
       NODE_ENV: 'test',
       ENCRYPTION_KEY: 'test-encryption-key-32-chars-long-123456',
       WEBHOOK_KEY: 'test-webhook-key-not-a-real-secret',

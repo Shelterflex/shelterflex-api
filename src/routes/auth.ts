@@ -285,7 +285,9 @@ router.post('/logout-all', authenticateToken, async (req: AuthenticatedRequest, 
   const refreshCount = await refreshTokenStore.invalidateAllByUserId(req.user!.id)
   clearRefreshCookie(res)
   auditAuthLogoutAll(req, { userId: req.user!.id, sessionCount: count + refreshCount })
-  res.json({ message: `Logged out from ${count + refreshCount} session(s)` })
+  // Each login creates one session and one refresh token, so report sessions
+  // only; adding both doubled the count.
+  res.json({ message: `Logged out from ${count} session(s)` })
 })
 
 /**

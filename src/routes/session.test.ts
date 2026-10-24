@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createTestAgent, expectErrorShape } from '../test-helpers.js'
-import { sessionStore, userStore, otpChallengeStore } from '../models/authStore.js'
+import { SESSION_TTL_MS, sessionStore, userStore, otpChallengeStore } from '../models/authStore.js'
 import { _testOnly_clearAuthRateLimits } from '../middleware/authRateLimit.js'
 import type supertest from 'supertest'
 
@@ -40,12 +40,10 @@ describe('Session Hardening', () => {
 
     const token = await loginAndGetToken(agent)
 
-    // Advance past 7-day TTL
-    vi.advanceTimersByTime(8 * 24 * 60 * 60 * 1000)
+    vi.advanceTimersByTime(SESSION_TTL_MS + 1000)
 
     const res = await agent.get('/api/auth/me').set('Authorization', `Bearer ${token}`)
-    expect(res.status).toBe(401)
-    expect(res.body.error.message).toBe('Invalid or expired token')
+    expectErrorShape(res, 'TOKEN_EXPIRED', 401)
   })
 
   it('logout: token is immediately invalidated', async () => {
@@ -60,8 +58,7 @@ describe('Session Hardening', () => {
 
     // Now it must fail
     const res = await agent.get('/api/auth/me').set('Authorization', `Bearer ${token}`)
-    expect(res.status).toBe(401)
-    expect(res.body.error.message).toBe('Invalid or expired token')
+    expectErrorShape(res, 'INVALID_TOKEN', 401)
   })
 
   it('logout-all: all sessions for the user are invalidated', async () => {
@@ -84,12 +81,12 @@ describe('Session Hardening', () => {
     // Both tokens must now be invalid
     expectErrorShape(
       await agent.get('/api/auth/me').set('Authorization', `Bearer ${token1}`),
-      'UNAUTHORIZED',
+      'INVALID_TOKEN',
       401,
     )
     expectErrorShape(
       await agent.get('/api/auth/me').set('Authorization', `Bearer ${token2}`),
-      'UNAUTHORIZED',
+      'INVALID_TOKEN',
       401,
     )
   })
@@ -101,8 +98,7 @@ describe('Session Hardening', () => {
     sessionStore.revokeByToken(token)
 
     const res = await agent.get('/api/auth/me').set('Authorization', `Bearer ${token}`)
-    expect(res.status).toBe(401)
-    expect(res.body.error.message).toBe('Invalid or expired token')
+    expectErrorShape(res, 'INVALID_TOKEN', 401)
   })
 
   it('missing token returns 401', async () => {
@@ -127,16 +123,15 @@ describe('Session Hardening', () => {
     expect(sessions[0].userAgent).toBe('TestBrowser/1.0')
   })
 
-  it('session has a 7-day expiry by default', async () => {
+  it('session expires after SESSION_TTL_MS', async () => {
     const agent = createTestAgent()
     await loginAndGetToken(agent)
 
     const sessions = sessionStore.getActiveSessionsByEmail(email)
     expect(sessions.length).toBeGreaterThan(0)
 
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
     const ttlMs = sessions[0].expiresAt.getTime() - sessions[0].createdAt.getTime()
-    expect(ttlMs).toBeGreaterThanOrEqual(sevenDaysMs - 1000)
-    expect(ttlMs).toBeLessThanOrEqual(sevenDaysMs + 1000)
+    expect(ttlMs).toBeGreaterThanOrEqual(SESSION_TTL_MS - 1000)
+    expect(ttlMs).toBeLessThanOrEqual(SESSION_TTL_MS + 1000)
   })
 })
