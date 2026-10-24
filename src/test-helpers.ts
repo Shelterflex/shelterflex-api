@@ -2,7 +2,9 @@ import supertest from 'supertest'
 import { createApp } from './app.js'
 import { expect } from 'vitest'
 
-export const RATE_LIMIT_BYPASS_TOKEN = 'test-bypass-token-12345'
+import { RATE_LIMIT_BYPASS_TOKEN } from './middleware/rateLimitBypass.js'
+
+export { RATE_LIMIT_BYPASS_TOKEN }
 
 /**
  * Creates a supertest agent for testing the Express app.

@@ -4,7 +4,7 @@ import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import type { User } from '../repositories/AuthRepository.js'
 import { RateLimitTiers, RateLimitConfig } from '../config/rateLimits.js'
-import { RATE_LIMIT_BYPASS_TOKEN } from '../test-helpers.js'
+import { RATE_LIMIT_BYPASS_TOKEN } from './rateLimitBypass.js'
 import {
   isIpBlocked,
   isUserBlocked,
@@ -93,7 +93,7 @@ export function createComprehensiveRateLimiter(options: {
     // the limiter entirely.  comprehensiveRateLimit.test.ts does NOT set this
     // header and therefore exercises the full middleware in isolation.
     const bypassHeader = req.headers['x-ratelimit-bypass']
-    if (bypassHeader === RATE_LIMIT_BYPASS_TOKEN) {
+    if (process.env.NODE_ENV === 'test' && bypassHeader === RATE_LIMIT_BYPASS_TOKEN) {
       return next()
     }
 
