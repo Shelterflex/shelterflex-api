@@ -625,6 +625,25 @@ export function createApp() {
   app.use("/metrics", createPrometheusMetricsRouter())
   app.use("/health", createHealthRouter(sorobanAdapter))
 
+  // Public listing photos. Mounted ahead of the rate limiters because a single
+  // property page loads a dozen or more images. File names are content-stable,
+  // so browsers and CDNs may cache them for a long time.
+  if (env.PUBLIC_MEDIA_DIR) {
+    app.use(
+      "/media",
+      express.static(env.PUBLIC_MEDIA_DIR, {
+        dotfiles: "deny",
+        index: false,
+        maxAge: "30d",
+      }),
+      // Anything static didn't serve (missing, dotfile, traversal) is a plain
+      // 404 rather than falling through to the API's error handler as a 500.
+      (_req: express.Request, res: express.Response) => {
+        res.status(404).end()
+      },
+    )
+  }
+
   // OpenAPI / Swagger docs (issue #929). Disabled in production unless the
   // operator explicitly opts in via a guard middleware.
   // The docs are the only HTML this app serves, so the CSP is scoped to them

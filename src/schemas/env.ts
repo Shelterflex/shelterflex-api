@@ -113,6 +113,11 @@ export const envSchema = z.object({
   FULL_PAYMENT_SPLIT_VERSION: z.string().default('v1'),
   FULL_PAYMENT_PLATFORM_SHARE: z.coerce.number().min(0).max(1).default(0),
   FULL_PAYMENT_REPORTER_SHARE: z.coerce.number().min(0).max(1).default(0),
+
+  // Directory of public assets (e.g. listing photos) served at /media. Kept
+  // separate from LOCAL_STORAGE_DIR, which holds private tenant documents.
+  // The route is not mounted when unset.
+  PUBLIC_MEDIA_DIR: z.string().optional(),
 }).refine((data) => {
   // Accept either field name; prefer SOROBAN_USDC_TOKEN_ID if provided
   const tokenId = data.SOROBAN_USDC_TOKEN_ID || data.USDC_TOKEN_ADDRESS

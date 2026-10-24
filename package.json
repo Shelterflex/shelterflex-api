@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:seed": "tsx src/seeds/run.ts",
+    "db:seed:demo-listings": "tsx src/scripts/seedDemoListings.ts",
     "db:reset": "tsx src/scripts/resetDatabase.ts",
     "db:backup": "tsx src/scripts/backup.ts",
     "db:restore": "tsx src/scripts/restore.ts",
