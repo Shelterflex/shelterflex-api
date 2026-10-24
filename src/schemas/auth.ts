@@ -8,6 +8,9 @@ export const verifyOtpSchema = z.object({
   email: z.string().email(),
   otp: z.string().length(6),
   referralCode: z.string().length(8).optional(),
+  // Signup details, applied only when this verification creates the account.
+  name: z.string().trim().min(1).max(100).optional(),
+  role: z.enum(['tenant', 'landlord']).optional(),
 })
 
 export const walletChallengeSchema = z.object({

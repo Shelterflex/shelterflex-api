@@ -17,6 +17,12 @@ export interface User {
   displayCurrency: DisplayCurrency
 }
 
+/** Details a new account is created with; existing accounts are left as-is. */
+export interface NewUserProfile {
+  name?: string
+  role?: Extract<UserRole, 'tenant' | 'landlord'>
+}
+
 export interface LandlordProfile {
   userId: string
   phone?: string
@@ -130,7 +136,7 @@ export class PostgresUserRepository {
     return user
   }
 
-  async getOrCreateByEmail(email: string): Promise<User> {
+  async getOrCreateByEmail(email: string, profile: NewUserProfile = {}): Promise<User> {
     const existing = await this.getByEmail(email)
     if (existing) return existing
 
@@ -141,8 +147,8 @@ export class PostgresUserRepository {
        RETURNING id, email, name, role, wallet_address, created_at, tier, plan_quota, display_currency`,
       [
         email.toLowerCase(),
-        email.split('@')[0] ?? email,
-        'tenant'
+        profile.name ?? email.split('@')[0] ?? email,
+        profile.role ?? 'tenant'
       ]
     )
 

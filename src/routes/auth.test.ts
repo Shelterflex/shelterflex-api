@@ -72,6 +72,42 @@ describe('Auth Routes (OTP)', () => {
     expect(session!.email).toBe(email)
   })
 
+  it('verify-otp creates a new account with the signup name and role', async () => {
+    const email = 'signup@example.com'
+
+    await request.post('/api/auth/request-otp').send({ email }).expect(200)
+    const res = await request
+      .post('/api/auth/verify-otp')
+      .send({ email, otp: '123456', name: '  Amaka Obi ', role: 'landlord' })
+      .expect(200)
+
+    expect(res.body.user).toMatchObject({ email, name: 'Amaka Obi', role: 'landlord' })
+  })
+
+  it('verify-otp ignores signup details for an existing account', async () => {
+    const email = 'existing@example.com'
+    await userStore.getOrCreateByEmail(email, { name: 'Original Name', role: 'tenant' })
+
+    await request.post('/api/auth/request-otp').send({ email }).expect(200)
+    const res = await request
+      .post('/api/auth/verify-otp')
+      .send({ email, otp: '123456', name: 'Someone Else', role: 'landlord' })
+      .expect(200)
+
+    expect(res.body.user).toMatchObject({ name: 'Original Name', role: 'tenant' })
+  })
+
+  it('verify-otp rejects roles that signup cannot grant', async () => {
+    const email = 'escalate@example.com'
+
+    await request.post('/api/auth/request-otp').send({ email }).expect(200)
+    const res = await request
+      .post('/api/auth/verify-otp')
+      .send({ email, otp: '123456', role: 'agent' })
+
+    expect(res.status).toBe(400)
+  })
+
   it('verify should increment attempts and eventually fail after too many attempts', async () => {
     const email = 'c@example.com'
 

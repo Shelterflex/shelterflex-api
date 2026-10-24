@@ -9,12 +9,16 @@ import {
   type Session,
   type WalletChallenge,
   type UserRole,
+  type NewUserProfile,
   type LandlordProfile
 } from '../repositories/AuthRepository.js'
 
 export type { UserRole, User, OtpChallenge, Session, WalletChallenge, LandlordProfile }
 
-export const SESSION_TTL_MS = 15 * 60 * 1000 // 15 minutes
+// Defaults to 15 minutes. The web app can't use the refresh cookie when it is
+// served from a different site than the API, so cross-site deployments raise
+// this via SESSION_TTL_MINUTES instead.
+export const SESSION_TTL_MS = (Number(process.env.SESSION_TTL_MINUTES) || 15) * 60 * 1000
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 export interface RefreshTokenRecord {
@@ -59,9 +63,9 @@ class UserStore {
     }
   }
 
-  async getOrCreateByEmail(email: string): Promise<User> {
+  async getOrCreateByEmail(email: string, profile: NewUserProfile = {}): Promise<User> {
     try {
-      const user = await this.postgresRepo.getOrCreateByEmail(email)
+      const user = await this.postgresRepo.getOrCreateByEmail(email, profile)
       // Update fallback cache
       this.fallbackCache.set(email, user)
       return user
@@ -76,8 +80,8 @@ class UserStore {
         id: randomUUID(),
         email,
         createdAt: now,
-        name: email.split('@')[0] ?? email,
-        role: 'tenant',
+        name: profile.name ?? email.split('@')[0] ?? email,
+        role: profile.role ?? 'tenant',
         tier: 'free',
         planQuota: 100,
         displayCurrency: 'NGN',

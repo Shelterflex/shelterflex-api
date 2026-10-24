@@ -17,6 +17,7 @@ import {
   userStore,
   walletChallengeStore,
 } from '../models/authStore.js'
+import type { NewUserProfile } from '../repositories/AuthRepository.js'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
 import { PostgresLinkedAddressStore } from '../models/linkedAddressStore.js'
 import { createOtpDeliveryProvider } from '../services/otpDeliveryFactory.js'
@@ -182,7 +183,10 @@ router.post(
       const existingUser = await userStore.getByEmail(email)
       const isNewUser = !existingUser
 
-      const user = await userStore.getOrCreateByEmail(email)
+      const user = await userStore.getOrCreateByEmail(email, {
+        name: req.body.name as string | undefined,
+        role: req.body.role as NewUserProfile['role'],
+      })
       const token = await issueSessionPair(
         res,
         user,
