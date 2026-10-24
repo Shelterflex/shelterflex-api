@@ -232,14 +232,6 @@ export function buildTenantDocumentObjectKey(
   return `tenant-documents/${tenantId}/${docType}/${randomUUID()}.${ext}`
 }
 
-export function buildPropertyMediaObjectKey(
-  listingId: string,
-  contentType: string,
-): string {
-  const ext = contentTypeToExtension(contentType)
-  return `property-media/${listingId}/${randomUUID()}.${ext}`
-}
-
 export function buildInspectionReportObjectKey(
   jobId: string,
   contentType: string,

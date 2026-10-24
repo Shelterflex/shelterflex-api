@@ -118,6 +118,9 @@ export const envSchema = z.object({
   // separate from LOCAL_STORAGE_DIR, which holds private tenant documents.
   // The route is not mounted when unset.
   PUBLIC_MEDIA_DIR: z.string().optional(),
+  // Public URL of that /media route (e.g. https://api.example.com/media), used
+  // to build links to uploaded images stored in PUBLIC_MEDIA_DIR.
+  PUBLIC_MEDIA_BASE_URL: z.string().url().optional(),
 }).refine((data) => {
   // Accept either field name; prefer SOROBAN_USDC_TOKEN_ID if provided
   const tokenId = data.SOROBAN_USDC_TOKEN_ID || data.USDC_TOKEN_ADDRESS

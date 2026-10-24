@@ -26,7 +26,6 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
 import {
   contentTypeToExtension,
   buildTenantDocumentObjectKey,
-  buildPropertyMediaObjectKey,
   buildInspectionReportObjectKey,
   buildAgreementObjectKey,
   generatePresignedUpload,
@@ -106,24 +105,6 @@ describe('buildTenantDocumentObjectKey', () => {
     expect(k2.startsWith('tenant-documents/tenant-BBB/')).toBe(true)
     expect(k1).not.toContain('tenant-BBB')
     expect(k2).not.toContain('tenant-AAA')
-  })
-})
-
-describe('buildPropertyMediaObjectKey', () => {
-  it('scopes key to listingId prefix', () => {
-    const key = buildPropertyMediaObjectKey('listing-456', 'image/png')
-    expect(key).toMatch(/^property-media\/listing-456\//)
-  })
-
-  it('includes correct extension', () => {
-    const key = buildPropertyMediaObjectKey('listing-456', 'image/webp')
-    expect(key).toMatch(/\.webp$/)
-  })
-
-  it('generates unique keys', () => {
-    const k1 = buildPropertyMediaObjectKey('listing-xyz', 'image/jpeg')
-    const k2 = buildPropertyMediaObjectKey('listing-xyz', 'image/jpeg')
-    expect(k1).not.toBe(k2)
   })
 })
 
@@ -225,12 +206,6 @@ describe('Object key path-traversal safety', () => {
     const tenantId = 'user-xyz'
     const key = buildTenantDocumentObjectKey(tenantId, 'identity', 'image/jpeg')
     expect(key.startsWith(`tenant-documents/${tenantId}/`)).toBe(true)
-  })
-
-  it('property media keys always start with property-media/<listingId>/', () => {
-    const listingId = 'prop-123'
-    const key = buildPropertyMediaObjectKey(listingId, 'image/png')
-    expect(key.startsWith(`property-media/${listingId}/`)).toBe(true)
   })
 
   it('inspection report keys always start with inspection-reports/<jobId>/', () => {

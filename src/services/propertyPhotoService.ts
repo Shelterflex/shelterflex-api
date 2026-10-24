@@ -1,5 +1,5 @@
 import type express from 'express'
-import { uploadFile, buildPropertyMediaObjectKey } from './storageService.js'
+import { storePublicImage } from './publicMediaService.js'
 import { propertyPhotoStore } from '../models/propertyPhotoStore.js'
 import type { PropertyPhoto } from '../models/propertyPhoto.js'
 
@@ -8,8 +8,9 @@ export class PropertyPhotoService {
     const uploadedPhotos: PropertyPhoto[] = []
 
     for (const file of files) {
-      const objectKey = buildPropertyMediaObjectKey(propertyId, file.mimetype)
-      const { url } = await uploadFile(objectKey, file.buffer, file.mimetype)
+      // Listing photos are public. The storage provider's local mode returned
+      // file:// URLs that browsers can't load.
+      const url = await storePublicImage(file.buffer, `properties/${propertyId}`)
       const dimensions = await this.getImageDimensions(file.buffer)
 
       const photo = await propertyPhotoStore.create({

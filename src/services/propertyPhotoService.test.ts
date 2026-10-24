@@ -8,16 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ── Hoist mocks before vi.mock factories ─────────────────────────────────
 const {
-  mockUploadFile,
-  mockBuildPropertyMediaObjectKey,
+  mockStorePublicImage,
   mockPhotoStoreCreate,
   mockPhotoStoreGetById,
   mockPhotoStoreDelete,
   mockPhotoStoreReorder,
   mockPhotoStoreSetFeatured,
 } = vi.hoisted(() => ({
-  mockUploadFile: vi.fn(),
-  mockBuildPropertyMediaObjectKey: vi.fn(),
+  mockStorePublicImage: vi.fn(),
   mockPhotoStoreCreate: vi.fn(),
   mockPhotoStoreGetById: vi.fn(),
   mockPhotoStoreDelete: vi.fn(),
@@ -25,9 +23,8 @@ const {
   mockPhotoStoreSetFeatured: vi.fn(),
 }))
 
-vi.mock('./storageService.js', () => ({
-  uploadFile: mockUploadFile,
-  buildPropertyMediaObjectKey: mockBuildPropertyMediaObjectKey,
+vi.mock('./publicMediaService.js', () => ({
+  storePublicImage: mockStorePublicImage,
 }))
 
 vi.mock('../models/propertyPhotoStore.js', () => ({
@@ -88,8 +85,7 @@ describe('PropertyPhotoService', () => {
 
   beforeEach(() => {
     service = new PropertyPhotoService()
-    mockUploadFile.mockReset()
-    mockBuildPropertyMediaObjectKey.mockReset()
+    mockStorePublicImage.mockReset()
     mockPhotoStoreCreate.mockReset()
     mockPhotoStoreGetById.mockReset()
     mockPhotoStoreDelete.mockReset()
@@ -97,8 +93,7 @@ describe('PropertyPhotoService', () => {
     mockPhotoStoreSetFeatured.mockReset()
 
     // Default happy-path mocks
-    mockBuildPropertyMediaObjectKey.mockReturnValue('property-media/property-1/uuid.jpg')
-    mockUploadFile.mockResolvedValue({ key: 'property-media/property-1/uuid.jpg', url: 'https://cdn.example.com/photo-1.jpg' })
+    mockStorePublicImage.mockResolvedValue('https://cdn.example.com/photo-1.jpg')
     mockPhotoStoreCreate.mockResolvedValue(makePhotoRecord())
   })
 
@@ -113,7 +108,7 @@ describe('PropertyPhotoService', () => {
       const file = makeMulterFile({ mimetype: 'image/jpeg' })
       const result = await service.uploadPropertyPhotos('property-1', [file])
 
-      expect(mockUploadFile).toHaveBeenCalledOnce()
+      expect(mockStorePublicImage).toHaveBeenCalledOnce()
       expect(mockPhotoStoreCreate).toHaveBeenCalledOnce()
       expect(result).toHaveLength(1)
       expect(result[0]!.propertyId).toBe('property-1')
@@ -139,19 +134,19 @@ describe('PropertyPhotoService', () => {
 
       const result = await service.uploadPropertyPhotos('property-1', files)
 
-      expect(mockUploadFile).toHaveBeenCalledTimes(3)
+      expect(mockStorePublicImage).toHaveBeenCalledTimes(3)
       expect(mockPhotoStoreCreate).toHaveBeenCalledTimes(3)
       expect(result).toHaveLength(3)
     })
 
-    it('calls buildPropertyMediaObjectKey with the propertyId', async () => {
+    it('stores each photo under the property\'s folder', async () => {
       const file = makeMulterFile()
       await service.uploadPropertyPhotos('my-property-id', [file])
-      expect(mockBuildPropertyMediaObjectKey).toHaveBeenCalledWith('my-property-id', 'image/jpeg')
+      expect(mockStorePublicImage).toHaveBeenCalledWith(file.buffer, 'properties/my-property-id')
     })
 
-    it('does not leave an orphaned record when uploadFile fails', async () => {
-      mockUploadFile.mockRejectedValue(new Error('S3 unavailable'))
+    it('does not leave an orphaned record when storing the image fails', async () => {
+      mockStorePublicImage.mockRejectedValue(new Error('S3 unavailable'))
 
       await expect(
         service.uploadPropertyPhotos('property-1', [makeMulterFile()]),
@@ -168,15 +163,15 @@ describe('PropertyPhotoService', () => {
         service.uploadPropertyPhotos('property-1', [makeMulterFile()]),
       ).rejects.toThrow('DB constraint violation')
 
-      // uploadFile was called, but the DB creation failed — the caller should handle cleanup;
+      // The image was stored, but the DB creation failed — the caller should handle cleanup;
       // the service should propagate the error rather than silently succeed
-      expect(mockUploadFile).toHaveBeenCalledOnce()
+      expect(mockStorePublicImage).toHaveBeenCalledOnce()
     })
 
     it('returns empty array when no files provided', async () => {
       const result = await service.uploadPropertyPhotos('property-1', [])
       expect(result).toEqual([])
-      expect(mockUploadFile).not.toHaveBeenCalled()
+      expect(mockStorePublicImage).not.toHaveBeenCalled()
       expect(mockPhotoStoreCreate).not.toHaveBeenCalled()
     })
   })

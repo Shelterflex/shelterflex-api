@@ -183,6 +183,7 @@ import { createAdminOutboxRouter } from "./routes/adminOutbox.js";
 import { initializeCacheInvalidationWebhooks } from "./services/cacheInvalidation.js";
 import { createKycWebhookRouter } from "./routes/kyc.js";
 import { createOnboardingRouter } from "./routes/onboarding.js";
+import { createMediaRouter } from "./routes/media.js";
 import { createEmployersRouter } from "./routes/employers.js";
 import { MonthlyDeductionReminderJob } from "./jobs/monthlyDeductionReminderJob.js";
 import { dataRetentionPurgeJobHandler, DATA_RETENTION_PURGE_JOB_NAME } from "./jobs/dataRetentionPurgeJob.js";
@@ -970,6 +971,7 @@ export function createApp() {
   app.use("/api/webhooks/kyc", createKycWebhookRouter());
   app.use("/api/onboarding", deprecatedMount(), createOnboardingRouter());
   app.use("/api/v1/onboarding", createOnboardingRouter());
+  app.use("/api/v1/media", createMediaRouter());
   // migrationGuideRouter explains the /api -> /api/v1 versioning scheme
   // itself and is already mounted at /api/v1 above; deprecation headers
   // don't apply to it.
