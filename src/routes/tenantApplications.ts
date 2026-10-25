@@ -31,7 +31,7 @@ router.post(
   authenticateToken,
   async (req: Request, res: Response, next) => {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
       if (!userId) {
         throw new AppError(
           ErrorCode.UNAUTHORIZED,
@@ -101,7 +101,7 @@ router.get(
   authenticateToken,
   async (req: Request, res: Response, next) => {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
       if (!userId) {
         throw new AppError(
           ErrorCode.UNAUTHORIZED,
@@ -156,7 +156,7 @@ router.get(
   authenticateToken,
   async (req: Request, res: Response, next) => {
     try {
-      const userId = (req as any).user?.userId;
+      const userId = (req as any).user?.id;
       if (!userId) {
         throw new AppError(
           ErrorCode.UNAUTHORIZED,

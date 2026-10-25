@@ -9,7 +9,7 @@ import { errorHandler } from "../middleware/errorHandler.js";
 // Mock the auth middleware
 vi.mock("../middleware/auth.js", () => ({
   authenticateToken: (req: any, _res: any, next: any) => {
-    req.user = { userId: "test-user-123" };
+    req.user = { id: "test-user-123" };
     next();
   },
 }));

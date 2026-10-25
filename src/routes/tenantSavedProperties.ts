@@ -11,7 +11,7 @@ import { ErrorCode } from "../errors/errorCodes.js";
 const router = Router();
 
 function getUserId(req: Request): string {
-  const userId = (req as Request & { user?: { userId: string } }).user?.userId;
+  const userId = (req as Request & { user?: { id: string } }).user?.id;
   if (!userId) {
     throw new AppError(
       ErrorCode.UNAUTHORIZED,

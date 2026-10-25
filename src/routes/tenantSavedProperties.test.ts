@@ -10,8 +10,8 @@ import { errorHandler } from "../middleware/errorHandler.js";
 
 vi.mock("../middleware/auth.js", () => ({
   authenticateToken: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    (req as express.Request & { user: { userId: string } }).user = {
-      userId: "tenant-user-1",
+    (req as express.Request & { user: { id: string } }).user = {
+      id: "tenant-user-1",
     };
     next();
   },
