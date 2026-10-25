@@ -1,5 +1,6 @@
 import { Router, Response } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { hasRole } from '../utils/hasRole.js'
 import { landlordPropertyStore } from '../models/landlordPropertyStore.js'
 import {
   createPropertySchema,
@@ -16,7 +17,7 @@ import { syncLandlordPropertyListing } from '../services/landlordPropertyListing
 const router = Router()
 
 function assertLandlord(req: AuthenticatedRequest) {
-  if (req.user?.role !== 'landlord' && req.user?.role !== 'admin') {
+  if (!req.user || !hasRole(req.user, 'landlord', 'admin')) {
     throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can access this resource')
   }
 }
@@ -69,7 +70,7 @@ router.post(
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
-      if (req.user?.role !== 'landlord') {
+      if (!req.user || !hasRole(req.user, 'landlord')) {
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can create properties')
       }
 
@@ -97,7 +98,7 @@ router.patch(
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
-      if (req.user?.role !== 'landlord') {
+      if (!req.user || !hasRole(req.user, 'landlord')) {
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can update properties')
       }
 
@@ -195,7 +196,7 @@ router.delete(
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
-      if (req.user?.role !== 'landlord') {
+      if (!req.user || !hasRole(req.user, 'landlord')) {
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can delete properties')
       }
 

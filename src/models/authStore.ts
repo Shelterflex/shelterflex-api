@@ -82,6 +82,7 @@ class UserStore {
         createdAt: now,
         name: profile.name ?? email.split('@')[0] ?? email,
         role: profile.role ?? 'tenant',
+        roles: [profile.role ?? 'tenant'],
         tier: 'free',
         planQuota: 100,
         displayCurrency: 'NGN',
@@ -89,6 +90,23 @@ class UserStore {
 
       this.fallbackCache.set(email, user)
       return user
+    }
+  }
+
+  async addRole(userId: string, role: UserRole): Promise<User> {
+    try {
+      const user = await this.postgresRepo.addRole(userId, role)
+      this.fallbackCache.set(user.email, user)
+      return user
+    } catch (error) {
+      console.warn('Postgres role update failed, using fallback cache:', error)
+      for (const user of this.fallbackCache.values()) {
+        if (user.id === userId) {
+          if (!user.roles.includes(role)) user.roles = [...user.roles, role]
+          return user
+        }
+      }
+      throw new Error('User not found for role update')
     }
   }
 

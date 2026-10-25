@@ -22,3 +22,8 @@ export const walletVerifySchema = z.object({
   address: z.string().regex(/^G[A-Z0-9]{55}$/, 'Invalid Stellar public key'),
   signedChallengeXdr: z.string(),
 })
+
+// Same self-service roles as signup; privileged roles are never self-granted.
+export const addRoleSchema = z.object({
+  role: z.enum(['tenant', 'landlord', 'whistleblower']),
+})

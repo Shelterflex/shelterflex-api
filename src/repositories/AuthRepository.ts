@@ -3,6 +3,14 @@ import { getPool } from '../db.js'
 import { userCache } from '../utils/cache.js'
 
 export type UserRole = 'tenant' | 'landlord' | 'agent' | 'whistleblower'
+/** Roles an account can add to itself after signup. */
+export const SELF_SERVICE_ROLES = ['tenant', 'landlord', 'whistleblower'] as const
+
+function rolesOf(row: { role: UserRole; roles?: UserRole[] | null }): UserRole[] {
+  const roles = row.roles ?? []
+  return roles.includes(row.role) ? roles : [row.role, ...roles]
+}
+
 export type DisplayCurrency = 'NGN' | 'USDC'
 
 export interface User {
@@ -11,6 +19,8 @@ export interface User {
   createdAt: Date
   name: string
   role: UserRole
+  /** Every role the account is registered for; always includes `role`. */
+  roles: UserRole[]
   walletAddress?: string
   tier: 'free' | 'pro' | 'enterprise'
   planQuota: number
@@ -79,7 +89,7 @@ export class PostgresUserRepository {
 
     const pool = await this.pool()
     const { rows } = await pool.query(
-      `SELECT id, email, name, role, wallet_address, created_at, tier, plan_quota, display_currency 
+      `SELECT id, email, name, role, roles, wallet_address, created_at, tier, plan_quota, display_currency 
        FROM users WHERE email = $1`,
       [email.toLowerCase()]
     )
@@ -92,6 +102,7 @@ export class PostgresUserRepository {
       email: row.email,
       name: row.name,
       role: row.role,
+      roles: rolesOf(row),
       walletAddress: row.wallet_address,
       createdAt: row.created_at,
       tier: row.tier,
@@ -111,7 +122,7 @@ export class PostgresUserRepository {
 
     const pool = await this.pool()
     const { rows } = await pool.query(
-      `SELECT id, email, name, role, wallet_address, created_at, tier, plan_quota, display_currency 
+      `SELECT id, email, name, role, roles, wallet_address, created_at, tier, plan_quota, display_currency 
        FROM users WHERE id = $1`,
       [id]
     )
@@ -124,6 +135,7 @@ export class PostgresUserRepository {
       email: row.email,
       name: row.name,
       role: row.role,
+      roles: rolesOf(row),
       walletAddress: row.wallet_address,
       createdAt: row.created_at,
       tier: row.tier,
@@ -142,9 +154,9 @@ export class PostgresUserRepository {
 
     const pool = await this.pool()
     const { rows } = await pool.query(
-      `INSERT INTO users (email, name, role) 
-       VALUES ($1, $2, $3) 
-       RETURNING id, email, name, role, wallet_address, created_at, tier, plan_quota, display_currency`,
+      `INSERT INTO users (email, name, role, roles) 
+       VALUES ($1, $2, $3, ARRAY[$3]::text[]) 
+       RETURNING id, email, name, role, roles, wallet_address, created_at, tier, plan_quota, display_currency`,
       [
         email.toLowerCase(),
         profile.name ?? email.split('@')[0] ?? email,
@@ -158,6 +170,7 @@ export class PostgresUserRepository {
       email: row.email,
       name: row.name,
       role: row.role,
+      roles: rolesOf(row),
       walletAddress: row.wallet_address,
       createdAt: row.created_at,
       tier: row.tier,
@@ -171,7 +184,7 @@ export class PostgresUserRepository {
     const { rows } = await pool.query(
       `UPDATE users SET display_currency = $1, updated_at = NOW()
        WHERE email = $2
-       RETURNING id, email, name, role, wallet_address, created_at, tier, plan_quota, display_currency`,
+       RETURNING id, email, name, role, roles, wallet_address, created_at, tier, plan_quota, display_currency`,
       [displayCurrency, email.toLowerCase()],
     )
     if (rows.length === 0) {
@@ -183,6 +196,7 @@ export class PostgresUserRepository {
       email: row.email,
       name: row.name,
       role: row.role,
+      roles: rolesOf(row),
       walletAddress: row.wallet_address,
       createdAt: row.created_at,
       tier: row.tier,
@@ -197,7 +211,7 @@ export class PostgresUserRepository {
   async getByWalletAddress(address: string): Promise<User | null> {
     const pool = await this.pool()
     const { rows } = await pool.query(
-      `SELECT id, email, name, role, wallet_address, created_at, tier, plan_quota, display_currency 
+      `SELECT id, email, name, role, roles, wallet_address, created_at, tier, plan_quota, display_currency 
        FROM users WHERE wallet_address = $1`,
       [address.toLowerCase()]
     )
@@ -210,6 +224,7 @@ export class PostgresUserRepository {
       email: row.email,
       name: row.name,
       role: row.role,
+      roles: rolesOf(row),
       walletAddress: row.wallet_address,
       createdAt: row.created_at,
       tier: row.tier,
@@ -224,7 +239,7 @@ export class PostgresUserRepository {
       `UPDATE users 
        SET wallet_address = $1, updated_at = NOW() 
        WHERE email = $2 
-       RETURNING id, email, name, role, wallet_address, created_at, tier, plan_quota, display_currency`,
+       RETURNING id, email, name, role, roles, wallet_address, created_at, tier, plan_quota, display_currency`,
       [walletAddress.toLowerCase(), email.toLowerCase()]
     )
 
@@ -234,6 +249,7 @@ export class PostgresUserRepository {
       email: row.email,
       name: row.name,
       role: row.role,
+      roles: rolesOf(row),
       walletAddress: row.wallet_address,
       createdAt: row.created_at,
       tier: row.tier,
@@ -243,6 +259,35 @@ export class PostgresUserRepository {
     // Invalidate/Update
     await userCache.set(`id:${user.id}`, user)
     await userCache.set(`email:${user.email.toLowerCase()}`, user)
+    return user
+  }
+
+  async addRole(userId: string, role: UserRole): Promise<User> {
+    const pool = await this.pool()
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET roles = CASE WHEN $1 = ANY(roles) THEN roles ELSE array_append(roles, $1) END,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, email, name, role, roles, wallet_address, created_at, tier, plan_quota, display_currency`,
+      [role, userId],
+    )
+    if (rows.length === 0) throw new Error('User not found')
+    const row = rows[0]
+    const user: User = {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      roles: rolesOf(row),
+      walletAddress: row.wallet_address,
+      createdAt: row.created_at,
+      tier: row.tier,
+      planQuota: row.plan_quota,
+      displayCurrency: row.display_currency ?? 'NGN',
+    }
+    await userCache.invalidate(`id:${user.id}`)
+    await userCache.invalidate(`email:${user.email.toLowerCase()}`)
     return user
   }
 

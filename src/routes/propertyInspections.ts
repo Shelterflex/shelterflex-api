@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { hasRole } from '../utils/hasRole.js'
 import { requireAdmin } from '../middleware/requireAdmin.js'
 import { validate } from '../middleware/validate.js'
 import {
@@ -23,7 +24,7 @@ import { InspectionStatus } from '../models/propertyInspection.js'
 import { propertyInspectionService } from '../services/propertyInspectionService.js'
 
 function assertInspector(req: AuthenticatedRequest) {
-  if (req.user?.role !== 'inspector' && req.user?.role !== 'admin') {
+  if (!hasRole(req.user, 'inspector', 'admin')) {
     throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only inspectors can access this resource')
   }
 }

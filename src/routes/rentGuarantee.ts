@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { getPool } from '../db.js'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { hasRole } from '../utils/hasRole.js'
 import type { RentGuaranteeProvider, InsurancePolicy } from '../services/insurance/RentGuaranteeProvider.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
@@ -42,7 +43,7 @@ export function createRentGuaranteeRouter(provider: RentGuaranteeProvider): Rout
   }
 
   function assertLandlord(req: AuthenticatedRequest) {
-    if (req.user?.role !== 'landlord') {
+    if (!hasRole(req.user, 'landlord')) {
       throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can access this resource')
     }
   }
@@ -107,7 +108,7 @@ export function createRentGuaranteeRouter(provider: RentGuaranteeProvider): Rout
 
   router.post('/insurance/:policyId/claim', authenticateToken, async (req: AuthenticatedRequest, res, next) => {
     try {
-      if (req.user?.role !== 'landlord' && req.user?.role !== 'admin') {
+      if (!hasRole(req.user, 'landlord', 'admin')) {
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can file claims')
       }
 

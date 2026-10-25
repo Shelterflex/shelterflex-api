@@ -7,6 +7,7 @@
 import { Router, type Response, type NextFunction } from 'express'
 import { z } from 'zod'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
+import { hasRole } from '../utils/hasRole.js'
 import { validate } from '../middleware/validate.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
@@ -144,7 +145,7 @@ export function createViewingsRouter(): Router {
     authenticateToken,
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
-        if (req.user!.role !== 'inspector') {
+        if (!hasRole(req.user, 'inspector')) {
           throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only inspectors can see these.')
         }
         const viewings = await viewingStore.listAwaitingInspector()
@@ -192,7 +193,7 @@ export function createViewingsRouter(): Router {
   /** POST /viewings/:id/claim: an inspector agrees to attend. */
   router.post('/:id/claim', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      if (req.user!.role !== 'inspector') {
+      if (!hasRole(req.user, 'inspector')) {
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only inspectors can attend viewings.')
       }
       const viewing = await viewingStore.getById(req.params.id as string)

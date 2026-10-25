@@ -5,7 +5,7 @@ import { validate } from '../middleware/validate.js'
 import { otpRequestRateLimit, walletAuthRateLimit } from '../middleware/authRateLimit.js'
 import { createRateLimiter } from '../middleware/rateLimiter.js'
 import { rateLimitProfiles } from '../config/rateLimitConfig.js'
-import { requestOtpSchema, verifyOtpSchema, walletChallengeSchema, walletVerifySchema } from '../schemas/auth.js'
+import { addRoleSchema, requestOtpSchema, verifyOtpSchema, walletChallengeSchema, walletVerifySchema } from '../schemas/auth.js'
 import { generateId, generateOtp, generateToken } from '../utils/tokens.js'
 import { generateOtpSalt, hashOtp, verifyOtpHash } from '../utils/otp.js'
 import { generateNonce, generateChallengeXdr, verifySignedChallenge, normalizeStellarAddress } from '../utils/wallet.js'
@@ -296,6 +296,26 @@ router.post('/logout-all', authenticateToken, async (req: AuthenticatedRequest, 
 router.get('/me', authenticateToken, (req: AuthenticatedRequest, res: Response) => {
   res.json({ user: sanitiseForClient({ ...req.user! }) })
 })
+
+/**
+ * POST /api/auth/roles
+ * Body: { role } -> { user }
+ * Registers the signed-in account for another self-service role, so it can
+ * open that role's dashboard as well as its own.
+ */
+router.post(
+  '/roles',
+  authenticateToken,
+  validate(addRoleSchema, 'body'),
+  async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const user = await userStore.addRole(req.user!.id, req.body.role)
+      res.json({ user: sanitiseForClient({ ...user }) })
+    } catch (error) {
+      next(error)
+    }
+  },
+)
 
 /**
  * POST /api/auth/wallet/challenge

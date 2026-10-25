@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
+import { hasRole } from '../utils/hasRole.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import { applyReferralCodeSchema } from '../schemas/referral.js'
@@ -15,7 +16,7 @@ function requireTenant(req: Request): string {
   if (!user?.id) {
     throw new AppError(ErrorCode.UNAUTHORIZED, 401, 'User not authenticated')
   }
-  if (user.role !== 'tenant') {
+  if (!hasRole(user, 'tenant')) {
     throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only tenants can access referrals')
   }
   return user.id as string

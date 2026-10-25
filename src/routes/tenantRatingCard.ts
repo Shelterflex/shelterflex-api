@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { hasRole } from '../utils/hasRole.js'
 import { tenantRatingService } from '../services/tenantRatingService.js'
 import { TenantReputationOnChainService } from '../services/tenantReputationOnChainService.js'
 import { AppError } from '../errors/AppError.js'
@@ -9,7 +10,7 @@ import { publicTenantRatingRateLimit } from '../middleware/publicRatingRateLimit
 import { SorobanAdapter } from '../soroban/adapter.js'
 
 function assertLandlordOrAdmin(req: AuthenticatedRequest) {
-  if (req.user?.role !== 'landlord' && req.user?.role !== 'admin') {
+  if (!hasRole(req.user, 'landlord', 'admin')) {
     throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can submit ratings')
   }
 }

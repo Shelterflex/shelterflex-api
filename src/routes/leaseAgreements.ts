@@ -4,6 +4,7 @@
 
 import { Router, Response, Request } from 'express'
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth.js'
+import { hasRole } from '../utils/hasRole.js'
 import { requireFlag } from '../middleware/requireFlag.js'
 import { leaseAgreementStore } from '../models/leaseAgreementStore.js'
 import { LeaseStatus } from '../models/leaseAgreement.js'
@@ -42,7 +43,7 @@ router.post(
       }
 
       // Only landlord can generate leases for their deals
-      if (req.user?.role !== 'landlord') {
+      if (!hasRole(req.user, 'landlord')) {
         throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only landlords can generate leases')
       }
 
