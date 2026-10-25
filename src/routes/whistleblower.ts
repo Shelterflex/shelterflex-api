@@ -13,6 +13,17 @@ import {
   createWhistleblowerRatingSchema,
   listWhistleblowerRatingsQuerySchema,
 } from '../schemas/whistleblowerRating.js'
+import { ListingStatus } from '../models/listing.js'
+
+const MAX_REPORTS_PER_MONTH = 2
+
+// How each listing status reads on the reporter's dashboard.
+const DASHBOARD_STATUS: Record<ListingStatus, string> = {
+  [ListingStatus.PENDING_REVIEW]: 'pending',
+  [ListingStatus.APPROVED]: 'active',
+  [ListingStatus.REJECTED]: 'rejected',
+  [ListingStatus.RENTED]: 'rented',
+}
 
 /**
  * Factory function to create the whistleblower router.
@@ -20,6 +31,65 @@ import {
  */
 export function createWhistleblowerRouter(earningsService: EarningsService): Router {
   const router = Router()
+
+  /**
+   * GET /api/whistleblower/dashboard
+   *
+   * The signed-in user's reporting summary: their listings, this month's
+   * report count, earnings and rating. Any signed-in user can report, so
+   * someone who hasn't yet gets zeros rather than a 404.
+   */
+  router.get('/dashboard', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+      const whistleblowerId = req.user!.id
+      const [listingPage, reportsThisMonth, aggregate, earnings] = await Promise.all([
+        listingStore.list({ whistleblowerId, pageSize: 100 }),
+        listingStore.getMonthlyReportCount(whistleblowerId),
+        whistleblowerRatingStore.getAggregate(whistleblowerId),
+        earningsService.getEarnings(whistleblowerId).catch((error) => {
+          if (error instanceof AppError && error.status === 404) return null
+          throw error
+        }),
+      ])
+
+      const history = earnings?.history ?? []
+      const earnedByListing = new Map<string, number>()
+      for (const item of history) {
+        earnedByListing.set(item.listingId, (earnedByListing.get(item.listingId) ?? 0) + item.amountNgn)
+      }
+      const listings = listingPage.listings
+      const addressById = new Map(listings.map((l) => [l.listingId, l.address]))
+
+      res.json({
+        stats: {
+          totalEarnings: earnings?.totals.totalNgn ?? 0,
+          reportsThisMonth,
+          maxReportsPerMonth: MAX_REPORTS_PER_MONTH,
+          activeListings: listings.filter((l) => l.status === ListingStatus.APPROVED).length,
+          rating: Math.round(aggregate.average * 10) / 10,
+          reviews: aggregate.count,
+        },
+        listings: listings.map((l) => ({
+          id: l.listingId,
+          address: l.address,
+          price: l.annualRentNgn,
+          beds: l.bedrooms,
+          baths: l.bathrooms,
+          status: DASHBOARD_STATUS[l.status],
+          earnings: earnedByListing.get(l.listingId) ?? 0,
+          postedDate: l.createdAt.toISOString(),
+        })),
+        earnings: history.map((item) => ({
+          date: item.createdAt,
+          listing: addressById.get(item.listingId) ?? item.listingId,
+          amount: item.amountNgn,
+          status: item.status === 'paid' ? 'completed' : 'pending',
+        })),
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
 
   /**
    * GET /api/whistleblower/tenant/rateable
@@ -212,7 +282,7 @@ export function createWhistleblowerRouter(earningsService: EarningsService): Rou
             'Monthly listing limit reached',
             {
               currentCount,
-              maxAllowed: 2,
+              maxAllowed: MAX_REPORTS_PER_MONTH,
               message: 'You have reached the maximum of 2 listings per month',
             },
           )

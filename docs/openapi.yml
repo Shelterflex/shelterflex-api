@@ -414,6 +414,61 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/whistleblower/dashboard:
+    get:
+      summary: Get the signed-in user's whistleblower dashboard
+      description: >-
+        Listings the user has reported, this month's report count against the
+        monthly limit, earnings and rating. A user who has never reported gets
+        zeros and empty lists.
+      operationId: getWhistleblowerDashboard
+      tags:
+        - Whistleblower
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stats, listings, earnings]
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      totalEarnings: { type: number }
+                      reportsThisMonth: { type: integer }
+                      maxReportsPerMonth: { type: integer }
+                      activeListings: { type: integer }
+                      rating: { type: number }
+                      reviews: { type: integer }
+                  listings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        address: { type: string }
+                        price: { type: number }
+                        beds: { type: integer }
+                        baths: { type: integer }
+                        status: { type: string, enum: [pending, active, rejected, rented] }
+                        earnings: { type: number }
+                        postedDate: { type: string, format: date-time }
+                  earnings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string, format: date-time }
+                        listing: { type: string }
+                        amount: { type: number }
+                        status: { type: string, enum: [pending, completed] }
+        "401":
+          $ref: "#/components/responses/Error"
+
   /api/whistleblower/{id}/ratings/aggregate:
     get:
       summary: Get whistleblower rating aggregate

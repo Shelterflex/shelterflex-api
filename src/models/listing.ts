@@ -58,6 +58,8 @@ export interface CreateListingInput {
 
 export interface ListingFilters {
   status?: ListingStatus
+  /** Only listings filed by this reporter (internal; not a public query param). */
+  whistleblowerId?: string
   query?: string
   q?: string
   minPrice?: number

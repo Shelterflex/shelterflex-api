@@ -77,6 +77,10 @@ class InMemoryListingStore implements ListingStorePort {
       filtered = filtered.filter((l) => l.status === status)
     }
 
+    if (filters.whistleblowerId) {
+      filtered = filtered.filter((l) => l.whistleblowerId === filters.whistleblowerId)
+    }
+
     if (searchQuery && searchQuery.trim()) {
       const searchTerm = searchQuery.toLowerCase()
       filtered = filtered.filter(
@@ -340,6 +344,11 @@ class PostgresListingStore implements ListingStorePort {
     if (filters.status) {
       values.push(filters.status)
       where.push(`status = $${values.length}`)
+    }
+
+    if (filters.whistleblowerId) {
+      values.push(filters.whistleblowerId)
+      where.push(`whistleblower_id = $${values.length}`)
     }
 
     const freeText = (filters.q ?? filters.query)?.trim()

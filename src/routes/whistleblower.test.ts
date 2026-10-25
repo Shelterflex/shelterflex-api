@@ -393,3 +393,65 @@ describe('Whistleblower Listings API', () => {
     })
   })
 })
+describe('GET /api/v1/whistleblower/dashboard', () => {
+  const app = createApp()
+
+  beforeEach(async () => {
+    await listingStore.clear()
+  })
+
+  it('requires a signed-in user', async () => {
+    await request(app).get('/api/v1/whistleblower/dashboard').expect(401)
+  })
+
+  it('gives someone who has never reported an empty summary', async () => {
+    const { token } = await signIn('wb-dash-new@example.com')
+    const response = await request(app)
+      .get('/api/v1/whistleblower/dashboard')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+    expect(response.body.stats).toEqual({
+      totalEarnings: 0,
+      reportsThisMonth: 0,
+      maxReportsPerMonth: 2,
+      activeListings: 0,
+      rating: 0,
+      reviews: 0,
+    })
+    expect(response.body.listings).toEqual([])
+    expect(response.body.earnings).toEqual([])
+  })
+
+  it("shows only the signed-in reporter's own listings", async () => {
+    const reporter = await signIn('wb-dash-1@example.com')
+    const other = await signIn('wb-dash-2@example.com')
+    const listing = {
+      address: '9 Allen Avenue, Ikeja',
+      bedrooms: 3,
+      bathrooms: 2,
+      annualRentNgn: 2500000,
+      photos: ['https://example.com/a.jpg', 'https://example.com/b.jpg', 'https://example.com/c.jpg'],
+    }
+    await request(app).post('/api/v1/whistleblower/listings').set('Authorization', `Bearer ${reporter.token}`).send(listing).expect(201)
+    await request(app)
+      .post('/api/v1/whistleblower/listings')
+      .set('Authorization', `Bearer ${other.token}`)
+      .send({ ...listing, address: '1 Other Street' })
+      .expect(201)
+
+    const response = await request(app)
+      .get('/api/v1/whistleblower/dashboard')
+      .set('Authorization', `Bearer ${reporter.token}`)
+      .expect(200)
+    expect(response.body.stats.reportsThisMonth).toBe(1)
+    expect(response.body.listings).toHaveLength(1)
+    expect(response.body.listings[0]).toMatchObject({
+      address: '9 Allen Avenue, Ikeja',
+      price: 2500000,
+      beds: 3,
+      baths: 2,
+      status: 'pending',
+      earnings: 0,
+    })
+  })
+})
