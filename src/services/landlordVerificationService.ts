@@ -40,7 +40,7 @@ export async function getLandlordVerificationPublic(landlordId: string) {
     `SELECT u.id AS user_id, p.verification_level AS level, p.verified_at
      FROM users u
      LEFT JOIN landlord_profiles p ON u.id = p.user_id
-     WHERE u.id = $1 AND u.role = 'landlord'`,
+     WHERE u.id = $1 AND ('landlord' = ANY(u.roles) OR u.role = 'landlord')`,
     [landlordId],
   )
 
