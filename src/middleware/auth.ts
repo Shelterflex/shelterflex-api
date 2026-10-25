@@ -10,7 +10,7 @@ export interface AuthenticatedRequest extends Request {
     id: string
     email: string
     name: string
-    role: 'tenant' | 'landlord' | 'agent' | 'admin' | 'inspector'
+    role: 'tenant' | 'landlord' | 'agent' | 'admin' | 'inspector' | 'whistleblower'
     displayCurrency?: 'NGN' | 'USDC'
   }
 }

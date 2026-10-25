@@ -5,17 +5,17 @@ import { documentDocTypeSchema } from '../schemas/tenantDocumentPresign.js'
 import { createTenantDocumentsPresignRouter } from './tenantDocumentsPresign.js'
 import { errorHandler } from '../middleware/errorHandler.js'
 import { sessionStore, userStore } from '../models/authStore.js'
+import { vaultUnlockStore } from '../services/vaultUnlockStore.js'
+
+const storedObjects = new Map<string, Buffer>()
 
 vi.mock('../services/storageService.js', () => ({
   buildTenantDocumentObjectKey: vi.fn(() => 'tenant-documents/user-1/id_card/uuid.pdf'),
-  generatePresignedUpload: vi.fn(async () => ({
-    uploadUrl: 'https://minio.local/upload',
-    expiresAt: new Date(Date.now() + 900000).toISOString(),
-  })),
-  generatePresignedDownload: vi.fn(async () => ({
-    downloadUrl: 'https://minio.local/download',
-    expiresAt: new Date(Date.now() + 300000).toISOString(),
-  })),
+  uploadFile: vi.fn(async (key: string, buffer: Buffer) => {
+    storedObjects.set(key, buffer)
+    return { key, url: `mem://${key}` }
+  }),
+  downloadFile: vi.fn(async (key: string) => storedObjects.get(key)!),
   contentTypeToExtension: vi.fn(() => 'pdf'),
   STORAGE_TTL: { UPLOAD_SECONDS: 900, DOWNLOAD_SECONDS: 300 },
 }))
@@ -108,6 +108,7 @@ describe('tenant documents presign endpoints', () => {
     await userStore.getOrCreateByEmail('presign-tenant@test.com')
     const session = await sessionStore.create('presign-tenant@test.com', `tenant-token-${Date.now()}`)
     tenantToken = session.token
+    vaultUnlockStore.unlock(tenantToken)
 
     app = express()
     app.use(express.json())
@@ -138,7 +139,77 @@ describe('tenant documents presign endpoints', () => {
       .expect(201)
 
     expect(res.body.success).toBe(true)
-    expect(res.body.data.uploadUrl).toBe('https://minio.local/upload')
+    expect(res.body.data.uploadUrl).toBe('/documents/DOC-1/content')
     expect(res.body.data.documentId).toBe('DOC-1')
+  })
+
+  describe('encrypted content', () => {
+    const key = 'tenant-documents/user-1/id_card/uuid.pdf'
+    const plain = Buffer.from('%PDF-1.4 my passport scan')
+    let userId: string
+
+    beforeEach(async () => {
+      storedObjects.clear()
+      userId = (await userStore.getOrCreateByEmail('presign-tenant@test.com')).id
+    })
+
+    function pendingDoc() {
+      return {
+        id: 'DOC-1',
+        userId,
+        storageKey: key,
+        uploadStatus: 'pending',
+        docType: 'id_card',
+        contentType: 'application/pdf',
+        fileName: 'passport.pdf',
+      }
+    }
+
+    it('stores only ciphertext and serves the original back to its owner', async () => {
+      mockStore.findById.mockResolvedValue(pendingDoc())
+
+      await request(app)
+        .put('/api/documents/DOC-1/content')
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .set('Content-Type', 'application/pdf')
+        .send(plain)
+        .expect(200)
+
+      const stored = storedObjects.get(key)!
+      expect(stored.includes(plain)).toBe(false)
+
+      mockStore.findById.mockResolvedValue({ ...pendingDoc(), uploadStatus: 'confirmed' })
+      const res = await request(app)
+        .get('/api/documents/DOC-1/content')
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = []
+          r.on('data', (c: Buffer) => chunks.push(c))
+          r.on('end', () => cb(null, Buffer.concat(chunks)))
+        })
+        .expect(200)
+
+      expect(res.body).toEqual(plain)
+      expect(res.headers['cache-control']).toBe('no-store')
+      expect(res.headers['x-content-type-options']).toBe('nosniff')
+    })
+
+    it("does not serve another tenant's document", async () => {
+      mockStore.findById.mockResolvedValue(null)
+      await request(app)
+        .get('/api/documents/DOC-1/content')
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .expect(404)
+    })
+
+    it('rejects an empty upload', async () => {
+      mockStore.findById.mockResolvedValue(pendingDoc())
+      await request(app)
+        .put('/api/documents/DOC-1/content')
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .set('Content-Type', 'application/pdf')
+        .expect(400)
+    })
   })
 })

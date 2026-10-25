@@ -28,6 +28,29 @@ export const walletInfoSchema = z.object({
   skipped: z.boolean().default(false),
 })
 
+/** Sent when the tenant verifies the account their rent will be deducted from. */
+export const repaymentAccountRequestSchema = z.object({
+  bankCode: z.string().trim().min(1),
+  bankName: z.string().trim().min(1).max(100),
+  accountNumber: z.string().trim().regex(/^\d{10}$/, 'Account number must be 10 digits'),
+  deductionDay: z.number().int().min(1).max(28),
+  consentAccepted: z.literal(true, {
+    errorMap: () => ({ message: 'You must authorise the automatic deduction to continue' }),
+  }),
+})
+
+/** What is stored. The account name comes from the bank lookup, never from the client. */
+export interface RepaymentInfo {
+  bankCode: string
+  bankName: string
+  /** pii:v1 encrypted envelope. */
+  accountNumberEncrypted: string
+  accountLast4: string
+  accountName: string
+  deductionDay: number
+  consentAcceptedAt: string
+}
+
 export const onboardingDraftSchema = z.object({
   personalInfo: personalInfoSchema.optional(),
   employmentInfo: employmentInfoSchema.optional(),
@@ -41,7 +64,7 @@ export type Documents = z.infer<typeof documentsSchema>
 export type WalletInfo = z.infer<typeof walletInfoSchema>
 export type OnboardingDraft = z.infer<typeof onboardingDraftSchema>
 
-export const ONBOARDING_STEPS = ['personal_info', 'employment_info', 'documents', 'wallet', 'summary'] as const
+export const ONBOARDING_STEPS = ['personal_info', 'employment_info', 'documents', 'repayment', 'wallet', 'summary'] as const
 export type OnboardingStep = typeof ONBOARDING_STEPS[number]
 
 export interface OnboardingRecord {
@@ -51,6 +74,7 @@ export interface OnboardingRecord {
   employmentInfo: EmploymentInfo | null
   documents: Documents | null
   walletInfo: WalletInfo | null
+  repaymentInfo: RepaymentInfo | null
   completedSteps: string[]
   currentStep: OnboardingStep
   submitted: boolean

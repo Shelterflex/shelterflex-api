@@ -111,6 +111,8 @@ import { requireFlag } from "./middleware/requireFlag.js";
 import { createFeatureFlagsRouter } from "./routes/featureFlags.js";
 import { createTenantApplicationsRouter } from "./routes/tenantApplications.js";
 import { createTenantSavedPropertiesRouter } from "./routes/tenantSavedProperties.js";
+import { createVaultUnlockRouter } from "./routes/vaultUnlock.js";
+import { createViewingsRouter } from "./routes/viewings.js";
 import { createTenantPaymentsRouter } from "./routes/tenantPayments.js";
 import { createNotificationsRouter } from "./routes/notifications.js";
 import { createSettlementAdminRouter } from "./routes/settlementAdmin.js";
@@ -186,6 +188,7 @@ import { createOnboardingRouter } from "./routes/onboarding.js";
 import { createMediaRouter } from "./routes/media.js";
 import { createEmployersRouter } from "./routes/employers.js";
 import { MonthlyDeductionReminderJob } from "./jobs/monthlyDeductionReminderJob.js";
+import { RewardReleaseJob } from "./jobs/rewardReleaseJob.js";
 import { dataRetentionPurgeJobHandler, DATA_RETENTION_PURGE_JOB_NAME } from "./jobs/dataRetentionPurgeJob.js";
 
 export function createApp() {
@@ -381,7 +384,12 @@ export function createApp() {
   const monthlyDeductionReminderJob = new MonthlyDeductionReminderJob(
     parseInt(process.env.MONTHLY_DEDUCTION_REMINDER_POLL_MS ?? String(24 * 60 * 60 * 1000), 10),
   );
+  const rewardReleaseJob = new RewardReleaseJob(
+    parseInt(process.env.REWARD_RELEASE_POLL_MS ?? String(24 * 60 * 60 * 1000), 10),
+  );
   if (env.NODE_ENV !== "test") {
+    rewardReleaseJob.start();
+    workers.push(rewardReleaseJob);
     dataRetentionJob.start();
     workers.push(dataRetentionJob);
     monthlyDeductionReminderJob.start();
@@ -955,6 +963,11 @@ export function createApp() {
   app.use("/api/v1/tenant/credit-score", createCreditScoreRouter());
   app.use("/api/tenant/onboarding", deprecatedMount(), createTenantOnboardingRouter());
   app.use("/api/v1/tenant/onboarding", createTenantOnboardingRouter());
+  app.use("/api/viewings", deprecatedMount(), createViewingsRouter());
+  app.use("/api/v1/viewings", createViewingsRouter());
+  // Re-verification sits outside the lock it opens, so it is mounted first.
+  app.use("/api/tenant/vault/unlock", deprecatedMount(), createVaultUnlockRouter());
+  app.use("/api/v1/tenant/vault/unlock", createVaultUnlockRouter());
   app.use("/api/tenant/vault", deprecatedMount(), createTenantDocumentVaultRouter());
   app.use("/api/v1/tenant/vault", createTenantDocumentVaultRouter());
   app.use("/api/documents", deprecatedMount(), createTenantDocumentsPresignRouter());

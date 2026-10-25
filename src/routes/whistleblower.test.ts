@@ -1,18 +1,31 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+// Reporters may only report where they live; each test user has one address on file.
+const registeredAddresses = new Map<string, string | null>()
+vi.mock('../services/registeredAddress.js', () => ({
+  getRegisteredAddress: async (_userId: string, email: string) =>
+    registeredAddresses.has(email) ? registeredAddresses.get(email) : '123 Main Street, Ikeja',
+}))
 import { createTestAgent, expectRequestId, expectErrorShape } from '../test-helpers.js'
 import request from 'supertest'
 import { createApp } from '../app.js'
 import { listingStore } from '../models/listingStore.js'
 import { ListingStatus } from '../models/listing.js'
 import { sessionStore, userStore } from '../models/authStore.js'
+import { whistleblowerTrustStore } from '../models/whistleblowerTrustStore.js'
+import { setFaceMatchProvider } from '../services/faceMatch.js'
 
 /** Signs a user in (in-memory fallback store) and returns their id and token. */
 async function signIn(email: string): Promise<{ userId: string; token: string }> {
   const user = await userStore.getOrCreateByEmail(email)
   const token = `token-${email.replace(/[^a-z0-9]/gi, '-')}`
   await sessionStore.create(email, token)
+  // Reporting needs a verified identity; tests of that rule opt out below.
+  if (!unverifiedEmails.has(email)) await whistleblowerTrustStore.markVerified(user.id, 'test-ref')
   return { userId: user.id, token }
 }
+
+const unverifiedEmails = new Set<string>()
 
 describe('Whistleblower Earnings API', () => {
   const request = createTestAgent()
@@ -238,6 +251,24 @@ describe('Whistleblower Listings API', () => {
       expect(response.body.error).toBeDefined()
       expect(response.body.error.code).toBe('VALIDATION_ERROR')
     })
+    it('rejects an apartment that is not the reporter\'s registered address', async () => {
+      const response = await request(app)
+        .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
+        .send({ ...validListing, address: '88 Awolowo Road, Ikoyi' })
+        .expect(422)
+      expect(JSON.stringify(response.body)).toContain('registered residential address')
+      expect(await listingStore.getMonthlyReportCount(reporter.userId)).toBe(0)
+    })
+    it('rejects reporters with no residential address on file', async () => {
+      registeredAddresses.set('wb-001@example.com', null)
+      await request(app)
+        .post('/api/whistleblower/listings')
+        .set('Authorization', `Bearer ${reporter.token}`)
+        .send(validListing)
+        .expect(403)
+      registeredAddresses.delete('wb-001@example.com')
+    })
     it('should enforce monthly limit (max 2 listings per month)', async () => {
       // Create first listing
       await request(app)
@@ -251,7 +282,7 @@ describe('Whistleblower Listings API', () => {
         .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
-          address: '456 Another Street',
+          address: 'Flat 2, 123 Main Street, Ikeja',
         })
         .expect(201)
       // Third listing should be rejected
@@ -260,7 +291,7 @@ describe('Whistleblower Listings API', () => {
         .set('Authorization', `Bearer ${reporter.token}`)
         .send({
           ...validListing,
-          address: '789 Third Street',
+          address: 'Flat 3, 123 Main Street, Ikeja',
         })
         .expect(429)
       expect(response.body.error).toBeDefined()
@@ -280,7 +311,7 @@ describe('Whistleblower Listings API', () => {
       await request(app)
         .post('/api/whistleblower/listings')
         .set('Authorization', `Bearer ${reporter.token}`)
-        .send({ ...validListing, address: '456 Street' })
+        .send({ ...validListing, address: 'Flat 2, 123 Main Street, Ikeja' })
         .expect(201)
       // Whistleblower 2 should still be able to create listings
       const response = await request(app)
@@ -423,6 +454,8 @@ describe('GET /api/v1/whistleblower/dashboard', () => {
   })
 
   it("shows only the signed-in reporter's own listings", async () => {
+    registeredAddresses.set('wb-dash-1@example.com', '9 Allen Avenue, Ikeja')
+    registeredAddresses.set('wb-dash-2@example.com', '1 Other Street')
     const reporter = await signIn('wb-dash-1@example.com')
     const other = await signIn('wb-dash-2@example.com')
     const listing = {
@@ -453,5 +486,132 @@ describe('GET /api/v1/whistleblower/dashboard', () => {
       status: 'pending',
       earnings: 0,
     })
+  })
+})
+
+describe('Whistleblower safety: identity verification and suspension', () => {
+  const app = createApp()
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(4096, 1)])
+  const listing = {
+    address: '123 Main Street, Ikeja',
+    bedrooms: 2,
+    bathrooms: 1,
+    annualRentNgn: 1200000,
+    photos: ['https://example.com/1.jpg', 'https://example.com/2.jpg', 'https://example.com/3.jpg'],
+  }
+
+  beforeEach(async () => {
+    await listingStore.clear()
+    await whistleblowerTrustStore.clear()
+    unverifiedEmails.clear()
+    setFaceMatchProvider(null)
+  })
+
+  it('refuses to take a report from someone who has not verified their face', async () => {
+    unverifiedEmails.add('wb-unverified@example.com')
+    const { token } = await signIn('wb-unverified@example.com')
+    await request(app)
+      .post('/api/v1/whistleblower/listings')
+      .set('Authorization', `Bearer ${token}`)
+      .send(listing)
+      .expect(403)
+    expect(await listingStore.getMonthlyReportCount('anyone')).toBe(0)
+  })
+
+  it('verifies with a selfie, NIN and consent, then lets them report', async () => {
+    unverifiedEmails.add('wb-verify@example.com')
+    const { token, userId } = await signIn('wb-verify@example.com')
+    setFaceMatchProvider({ verify: async () => ({ passed: true, reference: 'prov-1' }) })
+
+    const res = await request(app)
+      .post('/api/v1/whistleblower/identity/verify')
+      .set('Authorization', `Bearer ${token}`)
+      .field('nin', '12345678901')
+      .field('consent', 'true')
+      .attach('selfie', jpeg, { filename: 'me.jpg', contentType: 'image/jpeg' })
+      .expect(200)
+    expect(res.body.verified).toBe(true)
+    expect(await whistleblowerTrustStore.isVerified(userId)).toBe(true)
+
+    const status = await request(app).get('/api/v1/whistleblower/identity').set('Authorization', `Bearer ${token}`).expect(200)
+    expect(status.body).toMatchObject({ verified: true, suspended: false })
+  })
+
+  it('does not verify when the face does not match, and stops retries after too many', async () => {
+    unverifiedEmails.add('wb-nomatch@example.com')
+    const { token, userId } = await signIn('wb-nomatch@example.com')
+    setFaceMatchProvider({ verify: async () => ({ passed: false, reference: 'prov-2' }) })
+
+    const attempt = () =>
+      request(app)
+        .post('/api/v1/whistleblower/identity/verify')
+        .set('Authorization', `Bearer ${token}`)
+        .field('nin', '12345678901')
+        .field('consent', 'true')
+        .attach('selfie', jpeg, { filename: 'me.jpg', contentType: 'image/jpeg' })
+
+    for (let i = 0; i < 5; i++) await attempt().expect(422)
+    expect(await whistleblowerTrustStore.isVerified(userId)).toBe(false)
+    await attempt().expect(429)
+  })
+
+  it('needs consent, a valid NIN and a real image', async () => {
+    unverifiedEmails.add('wb-bad@example.com')
+    const { token } = await signIn('wb-bad@example.com')
+    const post = () => request(app).post('/api/v1/whistleblower/identity/verify').set('Authorization', `Bearer ${token}`)
+
+    await post().field('nin', '12345678901').attach('selfie', jpeg, 'me.jpg').expect(400)
+    await post().field('nin', '123').field('consent', 'true').attach('selfie', jpeg, 'me.jpg').expect(400)
+    await post()
+      .field('nin', '12345678901')
+      .field('consent', 'true')
+      .attach('selfie', Buffer.from('not an image'), 'me.jpg')
+      .expect(400)
+  })
+
+  it('suspends a whistleblower after safety reports from three different people', async () => {
+    const wb = await signIn('wb-risky@example.com')
+    registeredAddresses.set('wb-risky@example.com', '123 Main Street, Ikeja')
+    const created = await request(app)
+      .post('/api/v1/whistleblower/listings')
+      .set('Authorization', `Bearer ${wb.token}`)
+      .send(listing)
+      .expect(201)
+    const listingId = created.body.listing.listingId
+
+    const report = async (email: string) => {
+      const { token } = await signIn(email)
+      return request(app)
+        .post('/api/v1/whistleblower/safety-reports')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ listingId, details: 'They asked me to come alone at night.' })
+    }
+
+    await report('reporter-1@example.com')
+    await report('reporter-1@example.com') // the same person again doesn't count twice
+    await report('reporter-2@example.com')
+    expect(await whistleblowerTrustStore.isSuspended(wb.userId)).toBe(false)
+    await report('reporter-3@example.com')
+    expect(await whistleblowerTrustStore.isSuspended(wb.userId)).toBe(true)
+
+    await request(app)
+      .post('/api/v1/whistleblower/listings')
+      .set('Authorization', `Bearer ${wb.token}`)
+      .send({ ...listing, address: 'Flat 2, 123 Main Street, Ikeja' })
+      .expect(403)
+  })
+
+  it('does not let someone report their own listing', async () => {
+    const wb = await signIn('wb-self@example.com')
+    const created = await request(app)
+      .post('/api/v1/whistleblower/listings')
+      .set('Authorization', `Bearer ${wb.token}`)
+      .send(listing)
+      .expect(201)
+    await request(app)
+      .post('/api/v1/whistleblower/safety-reports')
+      .set('Authorization', `Bearer ${wb.token}`)
+      .send({ listingId: created.body.listing.listingId, details: 'Reporting myself, somehow.' })
+      .expect(400)
   })
 })

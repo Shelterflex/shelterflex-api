@@ -5,6 +5,7 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { authenticateToken } from '../middleware/auth.js'
+import { requireVaultUnlocked } from '../middleware/requireVaultUnlocked.js'
 import { AppError } from '../errors/AppError.js'
 import { ErrorCode } from '../errors/errorCodes.js'
 import {
@@ -37,6 +38,7 @@ function requireTenant(req: Request): string {
 router.get(
   '/',
   authenticateToken,
+  requireVaultUnlocked,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = requireTenant(req)
@@ -82,6 +84,7 @@ router.get(
 router.get(
   '/:documentId',
   authenticateToken,
+  requireVaultUnlocked,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = requireTenant(req)
@@ -116,6 +119,7 @@ router.get(
 router.get(
   '/:documentId/preview',
   authenticateToken,
+  requireVaultUnlocked,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = requireTenant(req)
@@ -159,7 +163,7 @@ router.get(
           fileFormat: doc.fileFormat,
           fileSizeBytes: doc.fileSizeBytes,
           previewAvailable: true,
-          storageKey: doc.storageKey,
+          contentPath: `/documents/${doc.id}/content`,
         },
       })
     } catch (error) {
@@ -175,6 +179,7 @@ router.get(
 router.post(
   '/',
   authenticateToken,
+  requireVaultUnlocked,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = requireTenant(req)
@@ -210,6 +215,7 @@ router.post(
 router.patch(
   '/:documentId',
   authenticateToken,
+  requireVaultUnlocked,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = requireTenant(req)
@@ -253,6 +259,7 @@ router.patch(
 router.delete(
   '/:documentId',
   authenticateToken,
+  requireVaultUnlocked,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = requireTenant(req)

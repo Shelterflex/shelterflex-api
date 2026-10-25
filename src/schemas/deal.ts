@@ -85,3 +85,14 @@ export const updateScheduleItemSchema = z.object({
 })
 
 export type UpdateScheduleItemRequest = z.infer<typeof updateScheduleItemSchema>
+
+/** Bank details collected when the deduction is set up; the full account number is never kept. */
+export const setupMandateSchema = z.object({
+  bankName: z.string().min(1).max(100),
+  accountName: z.string().min(1).max(150),
+  accountNumber: z.string().regex(/^\d{10}$/, 'Account number must be 10 digits'),
+  deductionDay: z.number().int().min(1).max(28),
+  providerReference: z.string().min(1).max(255),
+})
+
+export type SetupMandateRequest = z.infer<typeof setupMandateSchema>

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { getPool } from '../db.js'
 import { userCache } from '../utils/cache.js'
 
-export type UserRole = 'tenant' | 'landlord' | 'agent'
+export type UserRole = 'tenant' | 'landlord' | 'agent' | 'whistleblower'
 export type DisplayCurrency = 'NGN' | 'USDC'
 
 export interface User {
@@ -20,7 +20,7 @@ export interface User {
 /** Details a new account is created with; existing accounts are left as-is. */
 export interface NewUserProfile {
   name?: string
-  role?: Extract<UserRole, 'tenant' | 'landlord'>
+  role?: Extract<UserRole, 'tenant' | 'landlord' | 'whistleblower'>
 }
 
 export interface LandlordProfile {

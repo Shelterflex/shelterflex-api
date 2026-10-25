@@ -4,6 +4,7 @@ import { createApp } from '../app.js'
 import { rewardStore } from '../models/rewardStore.js'
 import { outboxStore } from '../outbox/store.js'
 import { RewardStatus } from '../models/reward.js'
+import { whistleblowerTrustStore } from '../models/whistleblowerTrustStore.js'
 import { OutboxStatus, TxType } from '../outbox/types.js'
 
 describe('POST /api/admin/rewards/:rewardId/mark-paid', () => {
@@ -48,6 +49,30 @@ describe('POST /api/admin/rewards/:rewardId/mark-paid', () => {
     expect(response.body.receipt).toBeDefined()
     expect(response.body.receipt.txId).toBeDefined()
     expect(['pending', 'sent', 'failed']).toContain(response.body.receipt.status)
+  })
+
+  it('refuses to pay a whistleblower who is suspended, and pays once reinstated', async () => {
+    await whistleblowerTrustStore.clear()
+    const reward = await rewardStore.create({
+      whistleblowerId: 'wb-held',
+      dealId: 'deal-held',
+      listingId: 'listing-held',
+      amountUsdc: 100,
+    })
+    await rewardStore.updateStatus(reward.rewardId, RewardStatus.PAYABLE)
+    await whistleblowerTrustStore.suspend('wb-held', 'safety reports')
+
+    const held = await request(app)
+      .post(`/api/admin/rewards/${reward.rewardId}/mark-paid`)
+      .send(validMarkPaidRequest)
+    expect(held.status).toBe(409)
+    expect((await rewardStore.getById(reward.rewardId))!.status).toBe(RewardStatus.PAYABLE)
+
+    await whistleblowerTrustStore.reinstate('wb-held')
+    const paid = await request(app)
+      .post(`/api/admin/rewards/${reward.rewardId}/mark-paid`)
+      .send(validMarkPaidRequest)
+    expect(paid.status).toBeLessThan(300)
   })
 
   it('should be idempotent when marking paid twice with same external ref', async () => {

@@ -34,6 +34,8 @@ import {
 } from "../schemas/listing.js";
 import { rewardStore } from "../models/rewardStore.js";
 import { RewardStatus } from "../models/reward.js";
+import { whistleblowerTrustStore } from "../models/whistleblowerTrustStore.js";
+import { releaseDueRewards } from "../services/whistleblowerRewardService.js";
 import { listingStore } from "../models/listingStore.js";
 import { ListingStatus } from "../models/listing.js";
 import { requireAdmin, assertAdminAuth } from '../middleware/requireAdmin.js'
@@ -516,6 +518,19 @@ export function createAdminRouter(
   );
 
   /**
+   * POST /api/admin/rewards/release-due
+   *
+   * Releases rewards whose hold period has passed. Also runs daily.
+   */
+  router.post("/rewards/release-due", async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.json({ success: true, ...(await releaseDueRewards()) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
    * POST /api/admin/rewards/:rewardId/mark-paid
    *
    * Mark a reward as paid and record receipt on-chain
@@ -555,6 +570,16 @@ export function createAdminRouter(
             ErrorCode.NOT_FOUND,
             404,
             `Reward with ID '${rewardId}' not found`,
+          );
+        }
+
+        // Safety hold: nothing is paid to a whistleblower under suspension.
+        if (await whistleblowerTrustStore.isSuspended(reward.whistleblowerId)) {
+          throw new AppError(
+            ErrorCode.CONFLICT,
+            409,
+            'This reward is on hold while the whistleblower\'s safety reports are reviewed.',
+            { reason: 'held_for_safety_review' },
           );
         }
 

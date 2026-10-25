@@ -108,6 +108,16 @@ describe('Auth Routes (OTP)', () => {
     expect(res.status).toBe(400)
   })
 
+  it('verify-otp creates a whistleblower-only account when asked', async () => {
+    const email = 'whistle-only@example.com'
+    await request.post('/api/auth/request-otp').send({ email }).expect(200)
+    const res = await request
+      .post('/api/auth/verify-otp')
+      .send({ email, otp: '123456', role: 'whistleblower' })
+      .expect(200)
+    expect(res.body.user.role).toBe('whistleblower')
+  })
+
   it('verify should increment attempts and eventually fail after too many attempts', async () => {
     const email = 'c@example.com'
 

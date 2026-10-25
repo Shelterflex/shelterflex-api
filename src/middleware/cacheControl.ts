@@ -21,7 +21,7 @@ export interface CacheConfig {
   /** Whether to vary cache by user */
   varyByUser?: boolean
   /** Whether to bypass cache for specific user roles */
-  bypassForRoles?: ('tenant' | 'landlord' | 'agent' | 'admin' | 'inspector')[]
+  bypassForRoles?: ('tenant' | 'landlord' | 'agent' | 'admin' | 'inspector' | 'whistleblower')[]
 }
 
 /**

@@ -6,9 +6,13 @@ import { ErrorCode } from '../errors/errorCodes.js'
 import { logger } from '../utils/logger.js'
 import {
   encryptPersonalInfoFields,
+  encryptPii,
 } from '../utils/piiEncryption.js'
+import { bankAccountResolverService } from '../services/BankAccountResolverService.js'
 import {
   onboardingDraftSchema,
+  repaymentAccountRequestSchema,
+  type RepaymentInfo,
   ONBOARDING_STEPS,
   type OnboardingStep,
   type OnboardingRecord,
@@ -29,6 +33,7 @@ function mapRow(row: Record<string, unknown>): OnboardingRecord {
     employmentInfo: row.employment_info ? (row.employment_info as any) : null,
     documents: row.documents ? (row.documents as any) : null,
     walletInfo: row.wallet_info ? (row.wallet_info as any) : null,
+    repaymentInfo: row.repayment_info ? (row.repayment_info as RepaymentInfo) : null,
     completedSteps: (row.completed_steps as string[]) ?? [],
     currentStep: (row.current_step as OnboardingStep) ?? 'personal_info',
     submitted: row.submitted as boolean,
@@ -119,6 +124,70 @@ export function createOnboardingRouter(): Router {
   })
 
   /**
+   * POST /api/onboarding/repayment-account
+   * Verifies the bank account rent will be deducted from and records the
+   * tenant's authorisation. The holder's name comes from the bank lookup, so it
+   * can't be typed in; the account number is stored encrypted.
+   */
+  router.post('/repayment-account', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = (req as any).user.id as string
+      const parsed = repaymentAccountRequestSchema.safeParse(req.body)
+      if (!parsed.success) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          400,
+          parsed.error.issues.map((i) => i.message).join(', '),
+        )
+      }
+      const { bankCode, bankName, accountNumber, deductionDay } = parsed.data
+
+      const resolved = await bankAccountResolverService.resolve({ accountNumber, bankCode, bankName })
+
+      const repaymentInfo: RepaymentInfo = {
+        bankCode,
+        bankName,
+        accountNumberEncrypted: encryptPii(accountNumber),
+        accountLast4: accountNumber.slice(-4),
+        accountName: resolved.accountName,
+        deductionDay,
+        consentAcceptedAt: new Date().toISOString(),
+      }
+
+      const pool = await getPool()
+      if (!pool) throw new AppError(ErrorCode.INTERNAL_ERROR, 500, 'Database not available')
+
+      const existing = await pool
+        .query(`SELECT completed_steps FROM onboarding_drafts WHERE user_id = $1`, [userId])
+        .then((r) => (r.rows[0]?.completed_steps as string[] | undefined) ?? [])
+      const completedSteps = Array.from(new Set([...existing, 'repayment']))
+
+      await pool.query(
+        `INSERT INTO onboarding_drafts (user_id, repayment_info, completed_steps, current_step, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           repayment_info  = $2,
+           completed_steps = $3,
+           current_step    = $4,
+           updated_at      = NOW()`,
+        [userId, JSON.stringify(repaymentInfo), completedSteps, deriveCurrentStep(completedSteps)],
+      )
+
+      res.json({
+        success: true,
+        data: {
+          bankName,
+          accountName: resolved.accountName,
+          accountLast4: repaymentInfo.accountLast4,
+          deductionDay,
+        },
+      })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  /**
    * GET /api/onboarding/status
    * Returns { completedSteps, currentStep, submitted }
    */
@@ -184,6 +253,14 @@ export function createOnboardingRouter(): Router {
           ErrorCode.VALIDATION_ERROR,
           400,
           'Personal info and employment info are required before submission',
+        )
+      }
+
+      if (!record.repaymentInfo) {
+        throw new AppError(
+          ErrorCode.VALIDATION_ERROR,
+          400,
+          'Authorise automatic rent deduction from your bank account before submitting',
         )
       }
 

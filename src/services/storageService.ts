@@ -24,9 +24,27 @@ export const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER ?? 's3'
 export interface StorageProvider {
   uploadFile(key: string, buffer: Buffer, contentType: string, metadata?: Record<string, string>): Promise<{ key: string; url: string }>
   deleteFile(key: string): Promise<void>
+  downloadFile(key: string): Promise<Buffer>
   generatePresignedUpload(key: string, contentType: string, ttlSeconds: number): Promise<{ uploadUrl: string; objectKey: string }>
   generatePresignedDownload(key: string, ttlSeconds: number): Promise<{ downloadUrl: string }>
   copyFile(sourceKey: string, destKey: string): Promise<void>
+}
+
+/**
+ * Server-side encryption for objects written to S3, as a second layer under the
+ * application-level encryption. Set S3_SERVER_SIDE_ENCRYPTION to "aws:kms"
+ * (with S3_KMS_KEY_ID) or "AES256"; unset leaves it to the bucket's default.
+ */
+function serverSideEncryptionParams(): {
+  ServerSideEncryption?: 'aws:kms' | 'AES256'
+  SSEKMSKeyId?: string
+} {
+  const mode = process.env.S3_SERVER_SIDE_ENCRYPTION
+  if (mode === 'aws:kms') {
+    return { ServerSideEncryption: 'aws:kms', SSEKMSKeyId: process.env.S3_KMS_KEY_ID }
+  }
+  if (mode === 'AES256') return { ServerSideEncryption: 'AES256' }
+  return {}
 }
 
 // S3 Storage Provider
@@ -56,6 +74,7 @@ class S3StorageProvider implements StorageProvider {
       Body: buffer,
       ContentType: contentType,
       Metadata: metadata,
+      ...serverSideEncryptionParams(),
     })
     await this.client.send(command)
     const { downloadUrl } = await this.generatePresignedDownload(key, DOWNLOAD_TTL_SECONDS)
@@ -68,6 +87,12 @@ class S3StorageProvider implements StorageProvider {
       Key: key,
     })
     await this.client.send(command)
+  }
+
+  async downloadFile(key: string): Promise<Buffer> {
+    const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }))
+    if (!result.Body) throw new Error('Storage returned an empty object')
+    return Buffer.from(await result.Body.transformToByteArray())
   }
 
   async generatePresignedUpload(key: string, contentType: string, ttlSeconds: number): Promise<{ uploadUrl: string; objectKey: string }> {
@@ -127,6 +152,10 @@ class LocalStorageProvider implements StorageProvider {
   async deleteFile(key: string): Promise<void> {
     const filePath = this.getFilePath(key)
     await fs.unlink(filePath).catch(() => {})
+  }
+
+  async downloadFile(key: string): Promise<Buffer> {
+    return fs.readFile(this.getFilePath(key))
   }
 
   async generatePresignedUpload(key: string, _contentType: string, _ttlSeconds: number): Promise<{ uploadUrl: string; objectKey: string }> {
@@ -191,6 +220,10 @@ function getBucket(): string {
 export async function uploadFile(key: string, buffer: Buffer, contentType: string, metadata?: Record<string, string>): Promise<{ key: string; url: string }> {
   const provider = getStorageProvider()
   return provider.uploadFile(key, buffer, contentType, metadata)
+}
+
+export async function downloadFile(key: string): Promise<Buffer> {
+  return getStorageProvider().downloadFile(key)
 }
 
 export async function deleteFile(key: string): Promise<void> {

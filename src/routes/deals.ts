@@ -29,6 +29,12 @@ import { recordDealActivationDuration } from '../metrics.js'
 import { applyDealRepaymentMethod } from '../services/salaryDeductionService.js'
 import { updateDealRepaymentSchema } from '../schemas/employer.js'
 import { idempotency } from '../middleware/idempotency.js'
+import { authenticateToken, type AuthenticatedRequest } from '../middleware/auth.js'
+import { getRepaymentMandateStore } from '../models/repaymentMandateStore.js'
+import { setupMandateSchema } from '../schemas/deal.js'
+import { openRewardForDeal } from '../services/whistleblowerRewardService.js'
+import { openMandateFromOnboarding } from '../services/onboardingMandate.js'
+import { auditLog, extractAuditContext } from '../utils/auditLogger.js'
 
 const router = Router()
 
@@ -121,6 +127,12 @@ router.post('/', idempotency(), async (req: Request, res: Response, next) => {
       })
     }
     
+    try {
+      await openMandateFromOnboarding(deal.dealId, deal.tenantId)
+    } catch (mandateError) {
+      logger.error('deal.mandate_open_failed', { dealId: deal.dealId, error: mandateError })
+    }
+
     // Lock listing to deal if listingId is provided
     if (validatedData.listingId) {
       await listingStore.lockToDeal(validatedData.listingId, deal.dealId)
@@ -250,6 +262,16 @@ router.patch('/:dealId/status', async (req: Request, res: Response, next) => {
           recordDealActivationDuration(Date.now() - activationStart)
         }
         eventType = WebhookEventType.DEAL_ACTIVATED
+
+        // The reporter of this apartment earns a reward, held until the rental has held.
+        try {
+          await openRewardForDeal(deal)
+        } catch (rewardError) {
+          logger.error('Failed to open whistleblower reward on activation', {
+            dealId: deal.dealId,
+            error: rewardError,
+          })
+        }
 
         // Generate and save repayment schedule on activation
         try {
@@ -426,6 +448,75 @@ router.get('/:dealId/schedule', async (req: Request, res: Response, next) => {
       data: schedule
     })
   } catch (error) {
+    next(error)
+  }
+})
+
+/** Loads the deal and checks that the signed-in user is its tenant. */
+async function requireDealTenant(req: AuthenticatedRequest, dealId: string | undefined) {
+  if (!dealId) {
+    throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'Deal ID is required')
+  }
+  const deal = await dealStore.findById(dealId)
+  if (!deal) {
+    throw new AppError(ErrorCode.NOT_FOUND, 404, `Deal with ID ${dealId} not found`)
+  }
+  if (req.user?.id !== deal.tenantId) {
+    throw new AppError(ErrorCode.FORBIDDEN, 403, 'Only the tenant on this deal can use its repayment mandate')
+  }
+  return deal
+}
+
+/**
+ * GET /api/deals/:dealId/mandate
+ * The automatic bank deduction for this deal. Every deal repays this way.
+ */
+router.get('/:dealId/mandate', authenticateToken, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const deal = await requireDealTenant(req, req.params.dealId)
+    const mandate = await getRepaymentMandateStore().findByDealId(deal.dealId)
+    if (!mandate) {
+      throw new AppError(ErrorCode.NOT_FOUND, 404, 'Automatic deduction has not been set up for this deal yet')
+    }
+    const { providerReference: _ref, ...visible } = mandate
+    res.json({ success: true, data: visible })
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * PUT /api/deals/:dealId/mandate
+ * Records the bank account the deduction draws from, once the tenant has
+ * authorised it with the payment provider during onboarding. Only the last four
+ * digits of the account number are stored.
+ */
+router.put('/:dealId/mandate', authenticateToken, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const deal = await requireDealTenant(req, req.params.dealId)
+    const body = setupMandateSchema.parse(req.body)
+
+    const mandate = await getRepaymentMandateStore().upsert({
+      dealId: deal.dealId,
+      bankName: body.bankName,
+      accountName: body.accountName,
+      accountLast4: body.accountNumber.slice(-4),
+      deductionDay: body.deductionDay,
+      providerReference: body.providerReference,
+      status: 'active',
+    })
+
+    auditLog('REPAYMENT_MANDATE_SET', extractAuditContext(req, 'user'), {
+      dealId: deal.dealId,
+      deductionDay: body.deductionDay,
+    })
+
+    const { providerReference: _ref, ...visible } = mandate
+    res.json({ success: true, data: visible })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ZodError') {
+      return next(new AppError(ErrorCode.VALIDATION_ERROR, 400, error.message))
+    }
     next(error)
   }
 })

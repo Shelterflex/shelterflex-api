@@ -14,8 +14,36 @@ import {
   listWhistleblowerRatingsQuerySchema,
 } from '../schemas/whistleblowerRating.js'
 import { ListingStatus } from '../models/listing.js'
+import multer from 'multer'
+import { z } from 'zod'
+import { userStore } from '../models/authStore.js'
+import { requireAdmin } from '../middleware/requireAdmin.js'
+import { whistleblowerTrustStore, MAX_FAILED_ATTEMPTS_PER_DAY } from '../models/whistleblowerTrustStore.js'
+import { getFaceMatchProvider } from '../services/faceMatch.js'
+import { detectImageType } from '../services/publicMediaService.js'
+import { auditLog, extractAuditContext } from '../utils/auditLogger.js'
+import { getRegisteredAddress } from '../services/registeredAddress.js'
+import { addressesMatch } from '../utils/addressMatch.js'
 
 const MAX_REPORTS_PER_MONTH = 2
+const MAX_SELFIE_BYTES = 5 * 1024 * 1024
+
+const selfieUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_SELFIE_BYTES, files: 1 },
+})
+
+const identityVerifySchema = z.object({
+  nin: z.string().trim().regex(/^\d{11}$/, 'NIN must be 11 digits'),
+  consent: z.literal('true', {
+    errorMap: () => ({ message: 'You must agree to face verification to continue' }),
+  }),
+})
+
+const safetyReportSchema = z.object({
+  listingId: z.string().trim().min(1).max(128),
+  details: z.string().trim().min(10, 'Please tell us what happened').max(2000),
+})
 
 // How each listing status reads on the reporter's dashboard.
 const DASHBOARD_STATUS: Record<ListingStatus, string> = {
@@ -243,6 +271,269 @@ export function createWhistleblowerRouter(earningsService: EarningsService): Rou
   )
 
   /**
+   * GET /api/whistleblower/identity
+   *
+   * Whether the signed-in user has passed face verification, and whether
+   * their account is suspended.
+   */
+  router.get(
+    '/identity',
+    authenticateToken,
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const identity = await whistleblowerTrustStore.getIdentity(req.user!.id)
+        res.json({
+          verified: identity.status === 'verified',
+          verifiedAt: identity.verifiedAt,
+          suspended: await whistleblowerTrustStore.isSuspended(req.user!.id),
+        })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
+
+  /**
+   * POST /api/whistleblower/identity/verify
+   *
+   * Multipart: `selfie` (image), `nin`, `consent=true`. Matches the selfie to
+   * the photo held for the NIN. Neither is stored; only the outcome is.
+   */
+  router.post(
+    '/identity/verify',
+    authenticateToken,
+    (req, res, next) => {
+      selfieUpload.single('selfie')(req, res, (err: unknown) => {
+        if (err instanceof multer.MulterError) {
+          next(
+            new AppError(
+              ErrorCode.VALIDATION_ERROR,
+              400,
+              err.code === 'LIMIT_FILE_SIZE' ? 'The selfie must be 5MB or smaller' : err.message,
+            ),
+          )
+          return
+        }
+        next(err as Error | undefined)
+      })
+    },
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const userId = req.user!.id
+        const parsed = identityVerifySchema.safeParse(req.body)
+        if (!parsed.success) {
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            400,
+            parsed.error.issues.map((i) => i.message).join(', '),
+          )
+        }
+        if (await whistleblowerTrustStore.isVerified(userId)) {
+          res.json({ verified: true })
+          return
+        }
+        if ((await whistleblowerTrustStore.recentFailedAttempts(userId)) >= MAX_FAILED_ATTEMPTS_PER_DAY) {
+          throw new AppError(
+            ErrorCode.TOO_MANY_REQUESTS,
+            429,
+            'Too many unsuccessful attempts today. Please try again tomorrow or contact support.',
+          )
+        }
+
+        const selfie = req.file
+        if (!selfie || !detectImageType(selfie.buffer)) {
+          throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'Please take a clear selfie (JPG, PNG or WebP).')
+        }
+
+        const result = await getFaceMatchProvider().verify({
+          userId,
+          selfie: selfie.buffer,
+          selfieContentType: selfie.mimetype,
+          nin: parsed.data.nin,
+        })
+
+        if (!result.passed) {
+          await whistleblowerTrustStore.recordFailedAttempt(userId)
+          auditLog('WHISTLEBLOWER_IDENTITY_FAILED', extractAuditContext(req, 'user'), {
+            reference: result.reference,
+          })
+          res.status(422).json({
+            verified: false,
+            message:
+              result.failureReason ??
+              'We could not match your face to your ID. Try again in good light, facing the camera.',
+          })
+          return
+        }
+
+        await whistleblowerTrustStore.markVerified(userId, result.reference)
+        auditLog('WHISTLEBLOWER_IDENTITY_VERIFIED', extractAuditContext(req, 'user'), {
+          reference: result.reference,
+        })
+        res.json({ verified: true })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
+
+  /**
+   * POST /api/whistleblower/safety-reports
+   *
+   * Anyone signed in can report that a listing's whistleblower made them feel
+   * unsafe. Enough reports from different people suspend the whistleblower
+   * until an admin reviews them.
+   */
+  router.post(
+    '/safety-reports',
+    authenticateToken,
+    validate(safetyReportSchema),
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const { listingId, details } = req.body as z.infer<typeof safetyReportSchema>
+        const listing = await listingStore.getById(listingId)
+        if (!listing) {
+          throw new AppError(ErrorCode.NOT_FOUND, 404, 'Listing not found')
+        }
+        if (listing.whistleblowerId === req.user!.id) {
+          throw new AppError(ErrorCode.VALIDATION_ERROR, 400, 'You cannot report your own listing')
+        }
+
+        const { report, newlySuspended } = await whistleblowerTrustStore.addSafetyReport({
+          whistleblowerId: listing.whistleblowerId,
+          reporterId: req.user!.id,
+          listingId,
+          details,
+        })
+
+        auditLog('WHISTLEBLOWER_SAFETY_REPORT', extractAuditContext(req, 'user'), {
+          reportId: report.reportId,
+          listingId,
+        })
+        if (newlySuspended) {
+          auditLog('WHISTLEBLOWER_SUSPENDED', extractAuditContext(req, 'user'), {
+            whistleblowerId: listing.whistleblowerId,
+          })
+          logger.warn('Whistleblower suspended after safety reports', {
+            whistleblowerId: listing.whistleblowerId,
+          })
+        }
+
+        res.status(201).json({ success: true, reportId: report.reportId })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
+
+  /**
+   * GET /api/whistleblower/admin/safety
+   * Everyone currently suspended, and the safety reports behind each suspension
+   * or still building towards one.
+   */
+  router.get(
+    '/admin/safety',
+    authenticateToken,
+    requireAdmin({ mode: 'session' }),
+    async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const [suspensions, reports] = await Promise.all([
+          whistleblowerTrustStore.listSuspensions(),
+          whistleblowerTrustStore.listReports(),
+        ])
+        const suspendedIds = new Set(suspensions.map((s) => s.userId))
+        const byWhistleblower = new Map<string, typeof reports>()
+        for (const r of reports) {
+          byWhistleblower.set(r.whistleblowerId, [...(byWhistleblower.get(r.whistleblowerId) ?? []), r])
+        }
+        const groups = await Promise.all(
+          [...byWhistleblower.entries()].map(async ([whistleblowerId, list]) => {
+            const user = await userStore.getById(whistleblowerId).catch(() => undefined)
+            return {
+              whistleblowerId,
+              name: user?.name ?? null,
+              email: user?.email ?? null,
+              suspended: suspendedIds.has(whistleblowerId),
+              suspendedAt: suspensions.find((s) => s.userId === whistleblowerId)?.suspendedAt ?? null,
+              distinctReporters: new Set(list.map((r) => r.reporterId)).size,
+              reports: list.map((r) => ({
+                reportId: r.reportId,
+                listingId: r.listingId,
+                details: r.details,
+                createdAt: r.createdAt,
+              })),
+            }
+          }),
+        )
+        groups.sort((a, b) => Number(b.suspended) - Number(a.suspended) || b.distinctReporters - a.distinctReporters)
+        res.json({ success: true, data: groups })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
+
+  /**
+   * POST /api/whistleblower/admin/:whistleblowerId/suspend
+   * Pauses a whistleblower's reporting without waiting for reports to pile up.
+   */
+  router.post(
+    '/admin/:whistleblowerId/suspend',
+    authenticateToken,
+    requireAdmin({ mode: 'session' }),
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const id = req.params.whistleblowerId as string
+        await whistleblowerTrustStore.suspend(id, 'Suspended by an admin')
+        auditLog('WHISTLEBLOWER_SUSPENDED', extractAuditContext(req, 'user'), { whistleblowerId: id })
+        res.json({ success: true })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
+
+  /**
+   * POST /api/whistleblower/admin/:whistleblowerId/reinstate
+   * Lifts a safety suspension after review.
+   */
+  router.post(
+    '/admin/:whistleblowerId/reinstate',
+    authenticateToken,
+    requireAdmin({ mode: 'session' }),
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const id = req.params.whistleblowerId as string
+        const reinstated = await whistleblowerTrustStore.reinstate(id)
+        if (reinstated) {
+          auditLog('WHISTLEBLOWER_REINSTATED', extractAuditContext(req, 'user'), { whistleblowerId: id })
+        }
+        res.json({ success: true, reinstated })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
+
+  /**
+   * GET /api/whistleblower/registered-address
+   *
+   * The residential address the signed-in user may report an apartment at.
+   */
+  router.get(
+    '/registered-address',
+    authenticateToken,
+    async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+      try {
+        const address = await getRegisteredAddress(req.user!.id, req.user!.email)
+        res.json({ address })
+      } catch (error) {
+        next(error)
+      }
+    },
+  )
+
+  /**
    * POST /api/whistleblower/listings
    *
    * Create a new listing
@@ -259,6 +550,43 @@ export function createWhistleblowerRouter(earningsService: EarningsService): Rou
     validate(createListingSchema),
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
       try {
+        // Reporters are real, identified people who have not been flagged as unsafe.
+        if (await whistleblowerTrustStore.isSuspended(req.user!.id)) {
+          throw new AppError(
+            ErrorCode.FORBIDDEN,
+            403,
+            'Your reporting is paused while we review safety reports. Contact support.',
+            { reason: 'account_suspended' },
+          )
+        }
+        if (!(await whistleblowerTrustStore.isVerified(req.user!.id))) {
+          throw new AppError(
+            ErrorCode.FORBIDDEN,
+            403,
+            'Verify your identity before reporting an apartment.',
+            { reason: 'identity_unverified' },
+          )
+        }
+
+        // Reporters can only report where they live, so nobody can file
+        // listings for apartments they have no connection to.
+        const registered = await getRegisteredAddress(req.user!.id, req.user!.email)
+        if (!registered) {
+          throw new AppError(
+            ErrorCode.FORBIDDEN,
+            403,
+            'We have no residential address on file for you. Complete your whistleblower application or onboarding first.',
+          )
+        }
+        if (!addressesMatch(registered, req.body.address)) {
+          throw new AppError(
+            ErrorCode.VALIDATION_ERROR,
+            422,
+            'The apartment address must match your registered residential address.',
+            { registeredAddress: registered },
+          )
+        }
+
         // The reporter is whoever is signed in; trusting a body field let
         // anyone file reports (and use up the monthly quota) as anyone else.
         const input = { ...req.body, whistleblowerId: req.user!.id }
